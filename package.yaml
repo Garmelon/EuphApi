@@ -1,0 +1,43 @@
+name:                euph-api
+version:             0.1.0.0
+github:              "Garmelon/euph-api"
+license:             BSD3
+author:              "Joscha Mennicken"
+maintainer:          "joscha@migejolise.de"
+copyright:           "Joscha Mennicken"
+
+extra-source-files:
+- README.md
+- ChangeLog.md
+
+# Metadata used when publishing your package
+# synopsis:            Short description of your package
+# category:            Web
+
+# To avoid duplicated efforts in documentation and dealing with the
+# complications of embedding Haddock markup inside cabal files, it is
+# common to point users to the README.md file.
+description:         Please see the README on Github at <https://github.com/Garmelon/euph-api#readme>
+
+dependencies:
+- base >= 4.7 && < 5
+- time
+- websockets
+- wuss
+- text
+- aeson
+- bytestring
+
+library:
+  source-dirs: src
+
+tests:
+  euph-api-test:
+    main:                Spec.hs
+    source-dirs:         test
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - euph-api

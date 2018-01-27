@@ -24,12 +24,14 @@ dependencies:
   # basic stuff
 - time
 - text
+- transformers
   # websocket connection
 - websockets
 - wuss
   # parsing json
 - aeson
 - bytestring
+- unordered-containers
   # other
 - stm
 

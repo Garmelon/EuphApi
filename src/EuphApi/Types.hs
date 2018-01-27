@@ -1,11 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 
--- | This module implements parts of the Euphoria API at
+-- | This module implements a few types from the Euphoria API at
 -- <http://api.euphoria.io/#overview>.
---
--- Currently, accounts are not implemented.
--- This means that all account, room host and staff commands are not implemented.
 
 module EuphApi.Types
   ( Snowflake
@@ -23,7 +20,8 @@ import           Data.Time
 
 -- | Represents <http://api.euphoria.io/#snowflake>.
 --
--- A 'Snowflake' is a 13-character string, usually used as a unique identifier for some type of object.
+-- A 'Snowflake' is a 13-character string, usually used as a unique identifier
+-- for some type of object.
 -- It is the base-36 encoding of an unsigned, 64-bit integer.
 type Snowflake = T.Text
 
@@ -45,8 +43,8 @@ instance FromJSON UserID where
         userType = findUserType tp
         userSnowflake = T.drop 1 sf
     in  return $ if userType == Other
-                   then UserID {userSnowflake=t, ..}
-                   else UserID {..}
+                   then UserID{userSnowflake=t, ..}
+                   else UserID{..}
     where
       findUserType txt
         | txt == "account" = Account
@@ -67,7 +65,8 @@ data UserType = Agent
 -- | Represents <http://api.euphoria.io/#message>.
 --
 -- A 'Message' is a node in a Room’s Log.
--- It corresponds to a chat message, or a post, or any broadcasted event in a room that should appear in the log.
+-- It corresponds to a chat message, or a post, or any broadcasted event in a room
+-- that should appear in the log.
 --
 -- The fields @previous_edit_id@ and @encryption_key_id@ are not implemented.
 data Message = Message
@@ -108,7 +107,7 @@ instance FromJSON Message where
     msgEdited    <- o .:? "edited"
     msgDeleted   <- o .:? "deleted"
     msgTruncated <- o .:? "truncated" .!= False
-    return $ Message {..}
+    return $ Message{..}
 
 -- | Represents <http://api.euphoria.io/#sessionview>.
 --
@@ -136,4 +135,4 @@ instance FromJSON SessionView where
     sessSessionID <- o .: "session_id"
     isStaff       <- o .:? "is_staff" .!= False
     isManager     <- o .:? "is_manager" .!= False
-    return $ SessionView {..}
+    return $ SessionView{..}

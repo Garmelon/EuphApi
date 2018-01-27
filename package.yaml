@@ -21,12 +21,17 @@ description:         Please see the README on Github at <https://github.com/Garm
 
 dependencies:
 - base >= 4.7 && < 5
+  # basic stuff
 - time
+- text
+  # websocket connection
 - websockets
 - wuss
-- text
+  # parsing json
 - aeson
 - bytestring
+  # other
+- stm
 
 library:
   source-dirs: src

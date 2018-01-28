@@ -64,6 +64,7 @@ module EuphApi.Threads (
   , EuphEvent(..)
   -- * API functions
   , pingReply
+  , nick
   ) where
 
 import           Control.Applicative
@@ -71,16 +72,17 @@ import           Control.Concurrent
 import           Control.Exception
 import           Control.Monad
 import           Control.Monad.IO.Class
+import           Control.Monad.Trans.Except
 import           Control.Monad.Trans.State
-import           Data.Aeson                as A
-import qualified Data.ByteString.Lazy      as BS
-import qualified Data.HashMap.Strict       as HM
-import qualified Data.Text                 as T
+import           Data.Aeson                 as A
+import qualified Data.ByteString.Lazy       as BS
+import qualified Data.HashMap.Strict        as HM
+import qualified Data.Text                  as T
 import           Data.Time
 import           Data.Time.Clock.POSIX
-import qualified EuphApi.CloseableChan     as E
-import qualified EuphApi.Types             as E
-import qualified Network.WebSockets        as WS
+import qualified EuphApi.CloseableChan      as E
+import qualified EuphApi.Types              as E
+import qualified Network.WebSockets         as WS
 
 -- Some useful type aliases
 type PacketID = T.Text
@@ -91,6 +93,50 @@ data Failure = FailClosed       -- ^ Could not send message because connection w
              | FailDisconnect   -- ^ Disconnected from server while waiting for the reply.
              | FailError T.Text -- ^ The server replied with an error.
              | FailParse        -- ^ Could not parse the server's reply correctly.
+
+instance Show Failure where
+  show FailClosed     = "Connection already closed"
+  show FailDisconnect = "Disconnected from server"
+  show (FailError t)  = "Server error: " ++ T.unpack t
+  show FailParse      = "Parsing failed"
+
+instance Exception Failure
+
+sendPacket :: (ToJSON p, FromJSON r) => SendChan -> T.Text -> p -> IO r
+sendPacket chan packetType packetData = do
+  var <- newEmptyMVar
+  let packet = SReply packetType packetData var
+  done <- E.writeChan chan packet
+  case done of
+    Nothing -> throw FailClosed
+    Just () -> do
+      result <- readMVar var
+      case result of
+        Left f  -> throw f
+        Right r -> return r
+
+sendPacketNoReply :: (ToJSON p) => SendChan -> T.Text -> p -> IO ()
+sendPacketNoReply chan packetType packetData = do
+  let packet = SNoReply packetType packetData
+  done <- E.writeChan chan packet
+  case done of
+    Nothing -> throw FailClosed
+    Just () -> return ()
+
+{-
+ - API functions
+ -}
+
+pingReply :: SendChan -> UTCTime -> IO ()
+pingReply chan time = do
+  let cmd = PingReplyCommand time
+  sendPacketNoReply chan "ping-reply" cmd
+
+nick :: SendChan -> T.Text -> IO (E.Nick, E.Nick)
+nick chan name = do
+  let cmd = NickCommand name
+  NickReply{..} <- sendPacket chan "nick" cmd
+  return (nickReplyFrom, nickReplyTo)
 
 {-
  - Commands and replies
@@ -168,12 +214,15 @@ data EuphEvent = BounceEvent (Maybe T.Text) (Maybe [T.Text])
                  -- ^ A 'DisconnectEvent' indicates that the session is being closed.
                  -- The client will subsequently be disconnected.
                  --
-                 -- If the disconnect reason is "authentication changed", the client should immediately reconnect.
+                 -- If the disconnect reason is "authentication changed",
+                 -- the client should immediately reconnect.
                  --
                  -- @'DisconnectEvent' reason@
                | HelloEvent E.SessionView Bool T.Text
-                 -- ^ A 'HelloEvent' is sent by the server to the client when a session is started.
-                 -- It includes information about the client's authentication and associated identity.
+                 -- ^ A 'HelloEvent' is sent by the server to the client
+                 -- when a session is started.
+                 -- It includes information about the client's authentication
+                 -- and associated identity.
                  --
                  -- @'HelloEvent' session roomIsPrivate version@
                | JoinEvent E.SessionView
@@ -181,9 +230,12 @@ data EuphEvent = BounceEvent (Maybe T.Text) (Maybe [T.Text])
                  --
                  -- @'JoinEvent' session@
                | NetworkEvent T.Text T.Text
-                 -- ^ A 'NetworkEvent' indicates some server-side event that impacts the presence of sessions in a room.
+                 -- ^ A 'NetworkEvent' indicates some server-side event
+                 -- that impacts the presence of sessions in a room.
                  --
-                 -- If the network event type is "partition", then this should be treated as a 'PartEvent' for all sessions connected to the same server id/era combo.
+                 -- If the network event type is "partition",
+                 -- then this should be treated as a 'PartEvent' for all sessions
+                 -- connected to the same server id/era combo.
                  --
                  -- @'NetworkEvent' server_id server_era@
                | NickEvent E.Nick E.Nick
@@ -191,8 +243,10 @@ data EuphEvent = BounceEvent (Maybe T.Text) (Maybe [T.Text])
                  --
                  -- @'NickEvent' from to@
                | EditMessageEvent E.Message
-                 -- ^ An 'EditMessageEvent' indicates that a message in the room has been modified or deleted.
-                 -- If the client offers a user interface and the indicated message is currently displayed, it should update its display accordingly.
+                 -- ^ An 'EditMessageEvent' indicates that a message in the room
+                 -- has been modified or deleted.
+                 -- If the client offers a user interface and the indicated message
+                 -- is currently displayed, it should update its display accordingly.
                  --
                  -- The event packet includes a snapshot of the message post-edit.
                  --
@@ -203,15 +257,18 @@ data EuphEvent = BounceEvent (Maybe T.Text) (Maybe [T.Text])
                  -- @'PartEvent' session@
                | PingEvent UTCTime UTCTime
                  -- ^ A 'PingEvent' represents a server-to-client ping.
-                 -- The client should send back a 'pingReply' with the same value for the time field as soon as possible (or risk disconnection).
+                 -- The client should send back a 'pingReply' with the same value
+                 -- for the time field as soon as possible (or risk disconnection).
                  --
                  -- @'PingEvent' time next@
                | SendEvent E.Message
-                 -- ^ A 'SendEvent' indicates a message received by the room from another session.
+                 -- ^ A 'SendEvent' indicates a message received by the room
+                 -- from another session.
                  --
                  -- @'SendEvent' message@
                | SnapshotEvent T.Text [E.SessionView] [E.Message] (Maybe E.Nick)
-                 -- ^ A 'SnapshotEvent' indicates that a session has successfully joined a room.
+                 -- ^ A 'SnapshotEvent' indicates that a session has
+                 -- successfully joined a room.
                  -- It also offers a snapshot of the room’s state and recent history.
                  --
                  -- @'SnapshotEvent' version listing log (Maybe nick)@
@@ -256,13 +313,6 @@ instance FromJSON EuphEvent where
       pSendEvent v = SendEvent <$> parseJSON v
       pSnapshotEvent = withObject "SnapshotEvent" $ \o ->
         SnapshotEvent <$> o .: "version" <*> o .: "listing" <*> o .: "log" <*> o .:? "nick"
-
-{-
- - API functions
- -}
-
-pingReply :: SendChan -> UTCTime -> IO (Reply ())
-pingReply = undefined
 
 {-
 pingReply chan time = do

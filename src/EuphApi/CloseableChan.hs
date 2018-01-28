@@ -2,7 +2,7 @@
 
 -- | Chans that can be closed and reopened.
 --
--- While a 'CloseableChan' is closed (or locked), it can not be written to or read from.
+-- While a 'CloseableChan' is closed, it can not be written to or read from.
 -- Calls to 'writeChan' and 'readChan' are non-blocking while a chan is closed.
 --
 -- If a thread is attempting to read from a chan using 'readChan' and that chan is closed,

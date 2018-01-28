@@ -7,6 +7,7 @@
 module EuphApi.Types
   ( Snowflake
   , SessionID
+  , Nick
   , UserID(..)
   , UserType(..)
   , Message(..)
@@ -28,6 +29,9 @@ type Snowflake = T.Text
 
 -- | ID of a session, unique across all sessions globally.
 type SessionID = T.Text
+
+-- | Nick of a user.
+type Nick = T.Text
 
 -- | Represents <http://api.euphoria.io/#userid>.
 --
@@ -120,9 +124,9 @@ instance FromJSON Message where
 -- The fields @client_address@ and @real_client_address@ are not implemented.
 data SessionView = SessionView
   { sessID        :: UserID
-  , sessName      :: String
-  , sessServerID  :: String
-  , sessServerEra :: String
+  , sessName      :: Nick
+  , sessServerID  :: T.Text
+  , sessServerEra :: T.Text
   , sessSessionID :: SessionID
   , isStaff       :: Bool
   , isManager     :: Bool

@@ -15,8 +15,9 @@ module EuphApi.Types
 
 import           Data.Aeson
 import           Data.Function
-import qualified Data.Text     as T
+import qualified Data.Text             as T
 import           Data.Time
+import           Data.Time.Clock.POSIX
 
 -- | Represents <http://api.euphoria.io/#snowflake>.
 --
@@ -101,13 +102,16 @@ instance FromJSON Message where
   parseJSON = withObject "Message" $ \o -> do
     msgID        <- o .: "id"
     msgParent    <- o .:? "parent"
-    msgTime      <- o .: "time"
     msgSender    <- o .: "sender"
     msgContent   <- o .: "content"
-    msgEdited    <- o .:? "edited"
-    msgDeleted   <- o .:? "deleted"
+    time         <- o .: "time"
+    edited       <- o .:? "edited"
+    deleted      <- o .:? "deleted"
     msgTruncated <- o .:? "truncated" .!= False
-    return $ Message{..}
+    let msgTime    = posixSecondsToUTCTime time
+        msgEdited  = posixSecondsToUTCTime <$> edited
+        msgDeleted = posixSecondsToUTCTime <$> deleted
+    return Message{..}
 
 -- | Represents <http://api.euphoria.io/#sessionview>.
 --
@@ -135,4 +139,4 @@ instance FromJSON SessionView where
     sessSessionID <- o .: "session_id"
     isStaff       <- o .:? "is_staff" .!= False
     isManager     <- o .:? "is_manager" .!= False
-    return $ SessionView{..}
+    return SessionView{..}

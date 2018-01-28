@@ -51,14 +51,14 @@ newOpenChanSTM :: STM (CloseableChan a)
 newOpenChanSTM = do
   cClosed <- newTVar False
   cChan   <- newTChan
-  return $ CloseableChan{..}
+  return CloseableChan{..}
 
 -- | See 'newClosedChan'.
 newClosedChanSTM :: STM (CloseableChan a)
 newClosedChanSTM = do
   cClosed <- newTVar True
   cChan   <- newTChan
-  return $ CloseableChan{..}
+  return CloseableChan{..}
 
 -- | See 'writeChan'.
 writeChanSTM :: CloseableChan a -> a -> STM (Maybe ())
@@ -84,14 +84,12 @@ readChanSTM CloseableChan{..} = do
 
 -- | See 'closeChan'.
 closeChanSTM :: CloseableChan a -> STM ()
-closeChanSTM CloseableChan{..} = do
-  writeTVar cClosed True
+closeChanSTM CloseableChan{..} = writeTVar cClosed True
   --writeTChan cChan End
 
 -- | See 'openChan'.
 openChanSTM :: CloseableChan a -> STM ()
-openChanSTM CloseableChan{..} = do
-  writeTVar cClosed False
+openChanSTM CloseableChan{..} = writeTVar cClosed False
 
 -- | See 'emptyChan'.
 emptyChanSTM :: CloseableChan a -> STM [a]

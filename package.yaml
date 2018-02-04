@@ -22,10 +22,12 @@ description:         Please see the README on Github at <https://github.com/Garm
 dependencies:
 - base >= 4.7 && < 5
   # basic stuff
-- time
+- containers
 - text
+- time
 - transformers
   # websocket connection
+- async
 - websockets
 - wuss
   # parsing json

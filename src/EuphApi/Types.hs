@@ -14,8 +14,9 @@ module EuphApi.Types
   , SessionView(..)
   ) where
 
-import           Data.Aeson
 import           Data.Function
+
+import           Data.Aeson
 import qualified Data.Text             as T
 import           Data.Time
 import           Data.Time.Clock.POSIX
@@ -78,7 +79,7 @@ data Message = Message
   { msgID        :: Snowflake
     -- ^ The id of the message (unique within a room)
   , msgParent    :: Maybe Snowflake
-    -- ^ The id of the message's parent, or Nothing if top-level
+    -- ^ The id of the message's parent, or @Nothing@ if top-level
   , msgTime      :: UTCTime
     -- ^ The unix timestamp of when the message was posted
   , msgSender    :: SessionView

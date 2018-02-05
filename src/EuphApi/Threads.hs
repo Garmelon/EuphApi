@@ -15,8 +15,9 @@ module EuphApi.Threads (
   , pingReply
   , nick
   , send
-  -- * Exception
+  -- * Events and Exceptions
   , EuphException(..)
+  , Event(..)
   ) where
 
 import           Control.Applicative
@@ -48,17 +49,20 @@ type RecvQueue  = TBQueue Recv
 type EventQueue = TBQueue (Maybe Event) -- 'Nothing' ends the event stream
 type LockedFlag = TVar Bool
 
+-- @ A connection to a room on euphoria.
+--
+-- __TODO__: Add more information on usage etc.
 data Connection = Connection LockedFlag SendQueue EventQueue
 
 -- | Read one 'Event' from the 'Connection'.
 --
--- Returns 'Nothing' once when the 'Connection' stops.
--- After that, any further calls of getEvent on the same connection
+-- Returns 'Nothing' once when the @Connection@ stops.
+-- After that, any further calls of @getEvent@ on the same @Connection@
 -- will block indefinitely.
 getEvent :: Connection -> IO (Maybe Event)
 getEvent (Connection locked _ qEvent) = undefined locked qEvent
 
--- | A @Network.Websockets.'WS.ClientApp'@ creating a 'Connection'.
+-- | A 'WS.ClientApp' creating a 'Connection'.
 euphApp :: WS.ClientApp Connection
 euphApp con = do
   sendQueue  <- atomically $ newTBQueue 10
@@ -284,9 +288,7 @@ send euphCon sendCommandParent sendCommandContent = do
 
 -- | The ways in which getting a reply from the server can fail.
 --
--- An EuphException may be raised by any function in the API functions section.
---
--- TODO: link to section if possible
+-- An @EuphException@ may be raised by any function in the __API functions__ section.
 data EuphException = EuphClosed
                      -- ^ Could not send message because connection was closed.
                    | EuphDisconnected
@@ -312,73 +314,76 @@ data Send = SDisconnect
           | forall p . (ToJSON p) => SNoReply T.Text p -- packet type and contents
           | forall p . (ToJSON p) => SReply T.Text p ReplyMVar
 
+-- | Represents <http://api.euphoria.io/#asynchronous-events>.
+--
+-- These events may be sent from the server to the client at any time.
 data Event
   = BounceEvent (Maybe T.Text) (Maybe [T.Text])
-    -- ^ A 'BounceEvent' indicates that access to a room is denied.
+    -- ^ A @BounceEvent@ indicates that access to a room is denied.
     --
-    -- @'BounceEvent' (Maybe reason) (Maybe [authOption])@
+    -- @BounceEvent (Maybe reason) (Maybe [authOption])@
   | DisconnectEvent T.Text
-    -- ^ A 'DisconnectEvent' indicates that the session is being closed.
+    -- ^ A @DisconnectEvent@ indicates that the session is being closed.
     -- The client will subsequently be disconnected.
     --
     -- If the disconnect reason is "authentication changed",
     -- the client should immediately reconnect.
     --
-    -- @'DisconnectEvent' reason@
+    -- @DisconnectEvent reason@
   | HelloEvent E.SessionView Bool T.Text
-    -- ^ A 'HelloEvent' is sent by the server to the client
+    -- ^ A @HelloEvent@ is sent by the server to the client
     -- when a session is started.
     -- It includes information about the client's authentication
     -- and associated identity.
     --
-    -- @'HelloEvent' session roomIsPrivate version@
+    -- @HelloEvent session roomIsPrivate version@
   | JoinEvent E.SessionView
-    -- ^ A 'JoinEvent' indicates a session just joined the room.
+    -- ^ A @JoinEvent@ indicates a session just joined the room.
     --
-    -- @'JoinEvent' session@
+    -- @JoinEvent session@
   | NetworkEvent T.Text T.Text
-    -- ^ A 'NetworkEvent' indicates some server-side event
+    -- ^ A @NetworkEvent@ indicates some server-side event
     -- that impacts the presence of sessions in a room.
     --
     -- If the network event type is "partition",
     -- then this should be treated as a 'PartEvent' for all sessions
     -- connected to the same server id/era combo.
     --
-    -- @'NetworkEvent' server_id server_era@
+    -- @NetworkEvent server_id server_era@
   | NickEvent E.Nick E.Nick
-    -- ^ A 'NickEvent' announces a nick change by another session in the room.
+    -- ^ A @NickEvent@ announces a nick change by another session in the room.
     --
-    -- @'NickEvent' from to@
+    -- @NickEvent from to@
   | EditMessageEvent E.Message
-    -- ^ An 'EditMessageEvent' indicates that a message in the room
+    -- ^ An @EditMessageEvent@ indicates that a message in the room
     -- has been modified or deleted.
     -- If the client offers a user interface and the indicated message
     -- is currently displayed, it should update its display accordingly.
     --
     -- The event packet includes a snapshot of the message post-edit.
     --
-    -- @'EditMessageEvent' editedMessage@
+    -- @EditMessageEvent editedMessage@
   | PartEvent E.SessionView
-    -- ^ A 'PartEvent' indicates a session just disconnected from the room.
+    -- ^ A @PartEvent@ indicates a session just disconnected from the room.
     --
-    -- @'PartEvent' session@
+    -- @PartEvent session@
   | PingEvent UTCTime UTCTime
-    -- ^ A 'PingEvent' represents a server-to-client ping.
+    -- ^ A @PingEvent@ represents a server-to-client ping.
     -- The client should send back a 'pingReply' with the same value
     -- for the time field as soon as possible (or risk disconnection).
     --
-    -- @'PingEvent' time next@
+    -- @PingEvent time next@
   | SendEvent E.Message
-    -- ^ A 'SendEvent' indicates a message received by the room
+    -- ^ A @SendEvent@ indicates a message received by the room
     -- from another session.
     --
-    -- @'SendEvent' message@
+    -- @SendEvent message@
   | SnapshotEvent T.Text [E.SessionView] [E.Message] (Maybe E.Nick)
-    -- ^ A 'SnapshotEvent' indicates that a session has
+    -- ^ A @SnapshotEvent@ indicates that a session has
     -- successfully joined a room.
     -- It also offers a snapshot of the room’s state and recent history.
     --
-    -- @'SnapshotEvent' version listing log (Maybe nick)@
+    -- @SnapshotEvent version listing log (Maybe nick)@
 
   -- LoginEvent -- not implemented
   -- LogoutEvent -- not implemented

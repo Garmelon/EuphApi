@@ -39,6 +39,7 @@ data CloseableChan a = CloseableChan
   , cChan   :: TChan (Content a)
   }
 
+-- TODO: Replace with Maybe?
 data Content a = Value a
                | End
 

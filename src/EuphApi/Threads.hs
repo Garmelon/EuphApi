@@ -9,7 +9,7 @@
 module EuphApi.Threads (
   -- * Connecting to euphoria
     Connection
-  , euphApp
+  , startEuphConnection
   , getEvent
   -- * API functions
   , disconnect
@@ -38,6 +38,7 @@ import qualified Data.Text                 as T
 import           Data.Time
 import           Data.Time.Clock.POSIX
 import qualified Network.WebSockets        as WS
+import qualified Wuss                      as WSS
 
 import qualified EuphApi.Types             as E
 
@@ -63,15 +64,15 @@ data Connection = Connection LockedFlag SendQueue EventQueue
 getEvent :: Connection -> IO (Maybe Event)
 getEvent (Connection _ _ qEvent) = atomically $ readTBQueue qEvent
 
--- | A 'WS.ClientApp' creating a 'Connection'.
-euphApp :: WS.ClientApp Connection
-euphApp con = do
+startEuphConnection :: String -> String -> IO Connection
+startEuphConnection host room = do
   sendQueue  <- atomically $ newTBQueue 10
   recvQueue  <- atomically $ newTBQueue 10
   eventQueue <- atomically $ newTBQueue 10
   locked     <- atomically $ newTVar False
   let euphCon = Connection locked sendQueue eventQueue
-  void $ forkIO $ recvThread euphCon recvQueue con
+  -- TODO: catch failed connection and send note to qEvent
+  void $ async $ WSS.runSecureClient host 443 ("/room/" ++ room ++ "/ws") (recvClient euphCon recvQueue)
   return euphCon
 
 {-
@@ -228,8 +229,8 @@ cleanupRecv qRecv = do
     RReply _ (ReplyMVar var) -> putMVar var (Left EuphDisconnected)
     _                        -> return ()
 
-recvThread :: Connection -> RecvQueue -> WS.Connection -> IO ()
-recvThread euphCon@(Connection locked qSend qEvent) qRecv con = do
+recvClient :: Connection -> RecvQueue -> WS.ClientApp ()
+recvClient euphCon@(Connection locked qSend qEvent) qRecv con = do
   tFetch <- async $ fetchThread qRecv con
   tSend  <- async $ evalStateT (sendThread euphCon qRecv con) 0
   waitingReplies <- execStateT (processRecv qRecv qEvent) M.empty

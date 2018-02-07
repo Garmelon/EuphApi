@@ -12,6 +12,7 @@ module EuphApi.Threads (
   , euphApp
   , getEvent
   -- * API functions
+  , disconnect
   , pingReply
   , nick
   , send
@@ -244,27 +245,30 @@ recvThread euphCon@(Connection locked qSend qEvent) qRecv con = do
  - API functions
  -}
 
+writeSend :: Connection -> Send -> STM ()
+writeSend (Connection locked qSend _) s = do
+  isLocked <- readTVar locked
+  if isLocked
+    then throwSTM EuphClosed
+    else writeTBQueue qSend s
+
 sendPacket :: (ToJSON p, FromJSON r) => Connection -> T.Text -> p -> IO r
-sendPacket (Connection locked qSend _) packetType packetData = do
+sendPacket euphCon packetType packetData = do
   var <- newEmptyMVar
   let packet = SReply packetType packetData (ReplyMVar var)
-  atomically $ do
-    isLocked <- readTVar locked
-    if isLocked
-      then throwSTM EuphClosed
-      else writeTBQueue qSend packet
+  atomically $ writeSend euphCon packet
   result <- readMVar var
   case result of
     Left f  -> throw f
     Right r -> return r
 
 sendPacketNoReply :: (ToJSON p) => Connection -> T.Text -> p -> IO ()
-sendPacketNoReply (Connection locked qSend _) packetType packetData = atomically $ do
+sendPacketNoReply euphCon packetType packetData = do
   let packet = SNoReply packetType packetData
-  isLocked <- readTVar locked
-  if isLocked
-    then throwSTM EuphClosed
-    else writeTBQueue qSend packet
+  atomically $ writeSend euphCon packet
+
+disconnect :: Connection -> IO ()
+disconnect euphCon = atomically $ writeSend euphCon SDisconnect
 
 pingReply :: Connection -> UTCTime -> IO ()
 pingReply euphCon pingReplyCommandTime =
@@ -422,7 +426,8 @@ instance FromJSON Event where
       pEditMessageEvent v = EditMessageEvent <$> parseJSON v
       pPartEvent v = PartEvent <$> parseJSON v
       pPingEvent = withObject "PingEvent" $ \o ->
-        PingEvent <$> o .: "time" <*> o .: "next"
+        PingEvent <$> (posixSecondsToUTCTime <$> o .: "time")
+                  <*> (posixSecondsToUTCTime <$> o .: "next")
       pSendEvent v = SendEvent <$> parseJSON v
       pSnapshotEvent = withObject "SnapshotEvent" $ \o ->
         SnapshotEvent <$> o .: "version" <*> o .: "listing" <*> o .: "log" <*> o .:? "nick"

@@ -6,7 +6,7 @@
 -- | Setup consisting of a few threads to send and receive packets to and from
 -- the euphoria api using a websocket connection.
 
-module EuphApi.Threads (
+module EuphApi.Connection (
   -- * Connecting to euphoria
     Connection
   , startEuphConnection

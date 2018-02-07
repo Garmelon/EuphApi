@@ -51,7 +51,7 @@ type RecvQueue  = TBQueue Recv
 type EventQueue = TBQueue (Maybe Event) -- 'Nothing' ends the event stream
 type LockedFlag = TVar Bool
 
--- @ A connection to a room on euphoria.
+-- | A connection to a room on euphoria.
 --
 -- __TODO__: Add more information on usage etc.
 data Connection = Connection LockedFlag SendQueue EventQueue
@@ -71,9 +71,15 @@ startEuphConnection host room = do
   eventQueue <- atomically $ newTBQueue 10
   locked     <- atomically $ newTVar False
   let euphCon = Connection locked sendQueue eventQueue
-  -- TODO: catch failed connection and send note to qEvent
-  void $ async $ WSS.runSecureClient host 443 ("/room/" ++ room ++ "/ws") (recvClient euphCon recvQueue)
+  void
+    $ forkIO
+    $ handle (handleException eventQueue)
+    $ WSS.runSecureClient host 443 ("/room/" ++ room ++ "/ws")
+    $ recvClient euphCon recvQueue
   return euphCon
+  where
+    handleException :: EventQueue -> WS.HandshakeException -> IO ()
+    handleException qEvent _ = atomically $ writeTBQueue qEvent Nothing
 
 {-
  - Fetch thread

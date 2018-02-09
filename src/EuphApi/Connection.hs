@@ -63,6 +63,7 @@ import           Control.Concurrent.Async
 import           Control.Concurrent.STM
 import           Control.Monad.Trans.State
 import           Data.Aeson
+import           Data.Aeson.Types
 import qualified Data.ByteString.Lazy      as BS
 import qualified Data.HashMap.Strict       as HM
 import qualified Data.Map                  as M
@@ -188,14 +189,17 @@ sendThread euphCon qRecv con = do
  -}
 
 data PacketInfo = PacketInfo
-  { infoPacketID    :: Maybe PacketID
-  , infoServerError :: Maybe T.Text
+  { infoPacketID :: Maybe PacketID
+  , infoData     :: Either T.Text Value
   } deriving (Show)
 
 instance FromJSON PacketInfo where
   parseJSON = withObject "packet" $ \o -> do
-    infoPacketID <- o .:? "id"
-    infoServerError <- o .:? "error"
+    infoPacketID    <- o .:? "id"
+    packetData <- o .:? "data"
+    infoData <- case packetData of
+      Nothing -> Left <$> o .: "error"
+      Just d  -> return $ Right d
     return PacketInfo{..}
 
 -- TODO: Swap for HashMap?
@@ -217,16 +221,16 @@ processPacket qEvent bs = do
         PacketInfo{..} <- decode bs
         replyID <- infoPacketID
         replyMVar <- M.lookup replyID replies
-        return (replyID, replyMVar, infoServerError)
+        return (replyID, replyMVar, infoData)
   -- ... and then write the appropriate result into the MVar.
-  whenJust result $ \(replyID, ReplyMVar var, serverError) -> do
+  whenJust result $ \(replyID, ReplyMVar var, infoData) -> do
     modify (M.delete replyID)
-    case serverError of
-      Just e -> liftIO $ putMVar var (Left (EuphServerError e))
-      Nothing ->
-        case decode bs of
-          Nothing -> liftIO $ putMVar var (Left EuphParse)
-          Just r  -> liftIO $ putMVar var (Right r)
+    case infoData of
+      Left e  -> liftIO $ putMVar var (Left (EuphServerError e))
+      Right d ->
+        case parseEither parseJSON d of
+          Left e  -> liftIO $ putMVar var (Left $ EuphParse e bs)
+          Right r -> liftIO $ putMVar var (Right r)
 
 processRecv :: RecvQueue -> EventQueue -> StateT Awaiting IO ()
 processRecv qRecv qEvent = do
@@ -436,14 +440,14 @@ data EuphException = EuphClosed
                      -- ^ Disconnected from server while waiting for the reply.
                    | EuphServerError T.Text
                      -- ^ The server replied with an error.
-                   | EuphParse
+                   | EuphParse String BS.ByteString
                      -- ^ Could not parse the server's reply correctly.
 
 instance Show EuphException where
-  show EuphClosed          = "Connection already closed"
-  show EuphDisconnected    = "Disconnected from server"
-  show (EuphServerError t) = "Server error: " ++ T.unpack t
-  show EuphParse           = "Parsing failed"
+  show EuphClosed           = "Connection already closed"
+  show EuphDisconnected     = "Disconnected from server"
+  show (EuphServerError t)  = "Server error: " ++ T.unpack t
+  show (EuphParse e bs)     = "Parsing failed: " ++ e ++ " - packet was " ++ show bs
 
 instance Exception EuphException
 

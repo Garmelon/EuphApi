@@ -84,7 +84,7 @@ data Message = Message
     -- ^ The unix timestamp of when the message was posted
   , msgSender    :: SessionView
     -- ^ The view of the sender's session
-  , msgContent   :: String
+  , msgContent   :: T.Text
     -- ^ The content of the message (client-defined)
   , msgEdited    :: Maybe UTCTime
     -- ^ The unix timestamp of when the message was last edited

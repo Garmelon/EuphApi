@@ -7,5 +7,5 @@ main = do
     printEvents con = do
       event <- E.getEvent con
       case event of
-        Just e  -> print e >> putStrLn "" >> printEvents con
-        Nothing -> putStrLn "[] end of events"
+        E.EuphEvent e -> print e >> putStrLn "" >> printEvents con
+        _             -> putStrLn "[] end of events"

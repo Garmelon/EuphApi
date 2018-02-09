@@ -5,6 +5,29 @@
 
 -- | Setup consisting of a few threads to send and receive packets to and from
 -- the euphoria api using a websocket connection.
+--
+-- Objects of type 'Connection' represent a connection to a server.
+-- @Connection@s can't be reused, so to reconnect to a server, a new @Connection@ object
+-- must be used.
+--
+-- To connect to a server, a new connection must be created using the
+-- 'startEuphConnection' command.
+--
+-- == Example
+--
+-- > import qualified EuphApi.Connection as E
+-- >
+-- > main = do
+-- >   putStrLn "> Connecting to euphoria.io, &test"
+-- >   con <- E.startEuphConnection "euphoria.io" "test"
+-- >   printEvents con
+-- >   where
+-- >     printEvents con = do
+-- >       event <- E.getEvent con
+-- >       case event of
+-- >         ConnectionFailed -> putStrLn "> Could not connect. Are you sure that room exists?"
+-- >         Disconnected     -> putStrLn "> Connection closed. Bye!"
+-- >         EuphEvent e      -> print e
 
 module EuphApi.Connection (
   -- * Connecting to euphoria
@@ -48,22 +71,25 @@ data ReplyMVar = forall r . (FromJSON r) => ReplyMVar (MVar (Reply r))
 
 type SendQueue  = TBQueue Send
 type RecvQueue  = TBQueue Recv
-type EventQueue = TBQueue (Maybe Event) -- 'Nothing' ends the event stream
+type EventQueue = TBQueue EventType
 type LockedFlag = TVar Bool
 
 -- | A connection to a room on euphoria.
---
--- __TODO__: Add more information on usage etc.
 data Connection = Connection LockedFlag SendQueue EventQueue
 
--- | Read one 'Event' from the 'Connection'.
+-- | Read one event from the 'Connection'.
 --
--- Returns 'Nothing' once when the @Connection@ stops.
--- After that, any further calls of @getEvent@ on the same @Connection@
--- will block indefinitely.
-getEvent :: Connection -> IO (Maybe Event)
+-- If the @Connection@ could not connect, this returns 'ConnectionFailed' once.
+-- If the @Connection@ stops, this returns 'Disconnected' once.
+--
+-- After either a @ConnectionFailed@ or a @Disconnected@, any further calls
+-- of @getEvent@ on the same @Connection@ will block indefinitely.
+getEvent :: Connection -> IO EventType
 getEvent (Connection _ _ qEvent) = atomically $ readTBQueue qEvent
 
+-- | Creates a new 'Connection' that will attempt to connect to a given room:
+--
+-- > con <- startEuphConnection server room
 startEuphConnection :: String -> String -> IO Connection
 startEuphConnection host room = do
   sendQueue  <- atomically $ newTBQueue 10
@@ -79,7 +105,7 @@ startEuphConnection host room = do
   return euphCon
   where
     handleException :: EventQueue -> WS.HandshakeException -> IO ()
-    handleException qEvent _ = atomically $ writeTBQueue qEvent Nothing
+    handleException qEvent _ = atomically $ writeTBQueue qEvent ConnectionFailed
 
 {-
  - Fetch thread
@@ -174,7 +200,7 @@ processPacket qEvent bs = do
   -- First, deal with event channel events.
   case decode bs of
     Nothing    -> return ()
-    Just event -> liftIO $ atomically $ writeTBQueue qEvent (Just event)
+    Just event -> liftIO $ atomically $ writeTBQueue qEvent (EuphEvent event)
   -- Then, deal with replies.
   -- Find out whether there is actually any dealing with replies to do...
   replies <- get
@@ -246,7 +272,7 @@ recvClient euphCon@(Connection locked qSend qEvent) qRecv con = do
   cleanupWaiting waitingReplies
   cleanupSend qSend
   cleanupRecv qRecv
-  atomically $ writeTBQueue qEvent Nothing
+  atomically $ writeTBQueue qEvent Disconnected
 
 {-
  - API functions
@@ -274,6 +300,7 @@ sendPacketNoReply euphCon packetType packetData = do
   let packet = SNoReply packetType packetData
   atomically $ writeSend euphCon packet
 
+-- | Close the 'Connection'. This will result in a 'Disconnected' event.
 disconnect :: Connection -> IO ()
 disconnect euphCon = atomically $ writeSend euphCon SDisconnect
 
@@ -325,6 +352,18 @@ data Send = SDisconnect
           | forall p . (ToJSON p) => SNoReply T.Text p -- packet type and contents
           | forall p . (ToJSON p) => SReply T.Text p ReplyMVar
 
+-- | The kinds of events that can occur in a 'Connection'.
+-- For more information, see 'getEvent'.
+data EventType = ConnectionFailed
+                 -- ^ The @Connection@ failed to connect to that room.
+                 -- When this event occurrs, no more events will occur.
+               | Disconnected
+                 -- ^ The @Connection@ was closed.
+                 -- When this event occurrs, no more events will occur.
+               | EuphEvent Event
+                 -- ^ The server sent an 'Event'.
+  deriving (Show)
+
 -- | Represents <http://api.euphoria.io/#asynchronous-events>.
 --
 -- These events may be sent from the server to the client at any time.
@@ -332,7 +371,7 @@ data Event
   = BounceEvent (Maybe T.Text) (Maybe [T.Text])
     -- ^ A @BounceEvent@ indicates that access to a room is denied.
     --
-    -- @BounceEvent (Maybe reason) (Maybe [authOption])@
+    -- > BounceEvent (Maybe reason) (Maybe [authOption])
   | DisconnectEvent T.Text
     -- ^ A @DisconnectEvent@ indicates that the session is being closed.
     -- The client will subsequently be disconnected.
@@ -340,18 +379,18 @@ data Event
     -- If the disconnect reason is "authentication changed",
     -- the client should immediately reconnect.
     --
-    -- @DisconnectEvent reason@
+    -- > DisconnectEvent reason
   | HelloEvent E.SessionView Bool T.Text
     -- ^ A @HelloEvent@ is sent by the server to the client
     -- when a session is started.
     -- It includes information about the client's authentication
     -- and associated identity.
     --
-    -- @HelloEvent session roomIsPrivate version@
+    -- > HelloEvent session roomIsPrivate version
   | JoinEvent E.SessionView
     -- ^ A @JoinEvent@ indicates a session just joined the room.
     --
-    -- @JoinEvent session@
+    -- > JoinEvent session
   | NetworkEvent T.Text T.Text
     -- ^ A @NetworkEvent@ indicates some server-side event
     -- that impacts the presence of sessions in a room.
@@ -360,11 +399,11 @@ data Event
     -- then this should be treated as a 'PartEvent' for all sessions
     -- connected to the same server id/era combo.
     --
-    -- @NetworkEvent server_id server_era@
+    -- > NetworkEvent server_id server_era
   | NickEvent E.Nick E.Nick
     -- ^ A @NickEvent@ announces a nick change by another session in the room.
     --
-    -- @NickEvent from to@
+    -- > NickEvent from to
   | EditMessageEvent E.Message
     -- ^ An @EditMessageEvent@ indicates that a message in the room
     -- has been modified or deleted.
@@ -373,28 +412,28 @@ data Event
     --
     -- The event packet includes a snapshot of the message post-edit.
     --
-    -- @EditMessageEvent editedMessage@
+    -- > EditMessageEvent editedMessage
   | PartEvent E.SessionView
     -- ^ A @PartEvent@ indicates a session just disconnected from the room.
     --
-    -- @PartEvent session@
+    -- > PartEvent session
   | PingEvent UTCTime UTCTime
     -- ^ A @PingEvent@ represents a server-to-client ping.
     -- The client should send back a 'pingReply' with the same value
     -- for the time field as soon as possible (or risk disconnection).
     --
-    -- @PingEvent time next@
+    -- > PingEvent time next
   | SendEvent E.Message
     -- ^ A @SendEvent@ indicates a message received by the room
     -- from another session.
     --
-    -- @SendEvent message@
+    -- > SendEvent message
   | SnapshotEvent T.Text [E.SessionView] [E.Message] (Maybe E.Nick)
     -- ^ A @SnapshotEvent@ indicates that a session has
     -- successfully joined a room.
     -- It also offers a snapshot of the room’s state and recent history.
     --
-    -- @SnapshotEvent version listing log (Maybe nick)@
+    -- > SnapshotEvent version listing log (Maybe nick)
   deriving (Show)
 
   -- LoginEvent -- not implemented

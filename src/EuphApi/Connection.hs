@@ -37,10 +37,19 @@ module EuphApi.Connection (
   -- * API functions
   , disconnect
   , pingReply
+  -- ** Session commands
+  , auth
+  , ping
+  -- ** Chat room commands
+  , getMessage
+  , messageLog
   , nick
+  -- pmInitiate
   , send
+  , who
   -- * Events and Exceptions
   , EuphException(..)
+  , EventType(..)
   , Event(..)
   ) where
 
@@ -308,6 +317,27 @@ pingReply :: Connection -> UTCTime -> IO ()
 pingReply euphCon pingReplyCommandTime =
   sendPacketNoReply euphCon "ping-reply" PingReplyCommand{..}
 
+auth :: Connection -> T.Text -> IO (Maybe T.Text)
+auth euphCon authCommandPasscode = do
+  AuthReply{..} <- sendPacket euphCon "auth" AuthCommand{..}
+  return authReplySuccess
+
+ping :: Connection -> IO ()
+ping euphCon = do
+  pingCommandTime <- getCurrentTime
+  PingReply{..} <- sendPacket euphCon "ping" PingCommand{..}
+  return ()
+
+getMessage :: Connection -> E.Snowflake -> IO E.Message
+getMessage euphCon getMessageCommandID = do
+  GetMessageReply{..} <- sendPacket euphCon "get-message" GetMessageCommand{..}
+  return getMessageReplyMessage
+
+messageLog :: Connection -> Integer -> Maybe E.Snowflake -> IO ([E.Message], Maybe E.Snowflake)
+messageLog euphCon logCommandN logCommandBefore = do
+  LogReply{..} <- sendPacket euphCon "log" LogCommand{..}
+  return (logReplyLog, logReplyBefore)
+
 nick :: Connection -> T.Text -> IO (E.Nick, E.Nick)
 nick euphCon nickCommandName = do
   NickReply{..} <- sendPacket euphCon "nick" NickCommand{..}
@@ -317,6 +347,11 @@ send :: Connection -> Maybe E.Snowflake -> T.Text -> IO E.Message
 send euphCon sendCommandParent sendCommandContent = do
   SendReply{..} <- sendPacket euphCon "send" SendCommand{..}
   return sendReplyMessage
+
+who :: Connection -> IO [E.SessionView]
+who euphCon = do
+  WhoReply{..} <- sendPacket euphCon "who" WhoCommand
+  return whoReplyListing
 
 
 
@@ -492,6 +527,91 @@ instance ToJSON PingReplyCommand where
   toJSON PingReplyCommand{..} =
     object ["time" .= utcTimeToPOSIXSeconds pingReplyCommandTime]
 
+-- auth command and reply
+
+newtype AuthCommand = AuthCommand
+  { authCommandPasscode :: T.Text
+  } deriving (Show)
+
+instance ToJSON AuthCommand where
+  toJSON AuthCommand{..} =
+    object ["type" .= ("passcode" :: T.Text), "passcode" .= authCommandPasscode]
+
+newtype AuthReply = AuthReply
+  { authReplySuccess :: Maybe T.Text
+  } deriving (Show)
+
+instance FromJSON AuthReply where
+  parseJSON = withObject "AuthReply" $ \o -> do
+    success <- o .: "success"
+    authReplySuccess <-
+      if success
+        then Just <$> o .: "reason"
+        else return Nothing
+    return AuthReply{..}
+
+-- ping command and reply
+
+newtype PingCommand = PingCommand
+  { pingCommandTime :: UTCTime
+  } deriving (Show)
+
+instance ToJSON PingCommand where
+  toJSON PingCommand{..} =
+    let timestr = show $ utcTimeToPOSIXSeconds pingCommandTime
+    in  object ["time" .= timestr]
+
+-- TODO: Maybe always return a "time"
+newtype PingReply = PingReply
+  { pingReplyTime :: Maybe UTCTime
+  } deriving (Show)
+
+instance FromJSON PingReply where
+  parseJSON = withObject "PingReply" $ \o -> do
+    maybeTime <- o .:? "time"
+    let pingReplyTime = posixSecondsToUTCTime <$> maybeTime
+    return PingReply{..}
+
+-- get-message command and reply
+
+newtype GetMessageCommand = GetMessageCommand
+  { getMessageCommandID :: E.Snowflake
+  } deriving (Show)
+
+instance ToJSON GetMessageCommand where
+  toJSON GetMessageCommand{..} =
+    object ["id" .= getMessageCommandID]
+
+newtype GetMessageReply = GetMessageReply
+  { getMessageReplyMessage :: E.Message
+  } deriving (Show)
+
+instance FromJSON GetMessageReply where
+  parseJSON v = GetMessageReply <$> parseJSON v
+
+-- log command and reply
+
+data LogCommand = LogCommand
+  { logCommandN :: Integer
+  , logCommandBefore :: Maybe E.Snowflake
+  } deriving (Show)
+
+instance ToJSON LogCommand where
+  toJSON LogCommand{..} =
+    object $ ("n" .= logCommandN) : ("before" .?= logCommandBefore)
+
+data LogReply = LogReply
+  { logReplyLog :: [E.Message]
+  , logReplyBefore :: Maybe E.Snowflake
+  } deriving (Show)
+
+-- TODO: Maybe always return a "before"?
+instance FromJSON LogReply where
+  parseJSON = withObject "LogReply" $ \o -> do
+    logReplyLog    <- o .: "log"
+    logReplyBefore <- o .:? "before"
+    return LogReply{..}
+
 -- nick command and reply
 
 newtype NickCommand = NickCommand
@@ -534,3 +654,18 @@ newtype SendReply = SendReply
 
 instance FromJSON SendReply where
   parseJSON v = SendReply <$> parseJSON v
+
+-- who command and reply
+
+data WhoCommand = WhoCommand
+  deriving (Show)
+
+instance ToJSON WhoCommand where
+  toJSON WhoCommand = object []
+
+newtype WhoReply = WhoReply
+  { whoReplyListing :: [E.SessionView]
+  } deriving (Show)
+
+instance FromJSON WhoReply where
+  parseJSON v = WhoReply <$> parseJSON v

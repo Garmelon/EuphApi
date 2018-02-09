@@ -313,41 +313,109 @@ sendPacketNoReply euphCon packetType packetData = do
 disconnect :: Connection -> IO ()
 disconnect euphCon = atomically $ writeSend euphCon SDisconnect
 
+-- | Reply to the server's 'PingEvent',
+-- as described in <http://api.euphoria.io/#ping-event>.
 pingReply :: Connection -> UTCTime -> IO ()
 pingReply euphCon pingReplyCommandTime =
   sendPacketNoReply euphCon "ping-reply" PingReplyCommand{..}
 
+-- | Implements <http://api.euphoria.io/#auth>.
+--
+-- The 'auth' command attempts to join a private room.
+-- It should be sent in response to a 'BounceEvent' at the beginning of a session.
+--
+-- The reply reports whether the @auth@ command succeeded.
+-- 'Nothing' implies success whereas @'Just' error@ reports an authentication error.
+--
+-- > success <- auth con passcode
 auth :: Connection -> T.Text -> IO (Maybe T.Text)
 auth euphCon authCommandPasscode = do
   AuthReply{..} <- sendPacket euphCon "auth" AuthCommand{..}
   return authReplySuccess
 
+-- | Implements <http://api.euphoria.io/#ping>.
+--
+-- The 'ping' command initiates a client-to-server ping.
+-- The server will send back a reply with the same timestamp as soon as possible.
+--
+-- This uses the current time as value for the @time@ field.
+-- Might be useful to check whether a connection still works.
+-- Could also be used for measuring the server delay.
+-- As all other api functions, this will also throw an exception if the connection closed.
+--
+-- > ping con
 ping :: Connection -> IO ()
 ping euphCon = do
   pingCommandTime <- getCurrentTime
   PingReply{..} <- sendPacket euphCon "ping" PingCommand{..}
   return ()
 
+-- | Implements <http://api.euphoria.io/#get-message>.
+--
+-- The 'getMessage' command retrieves the full content of a single message in the room.
+--
+-- > message <- getMessage con id
 getMessage :: Connection -> E.Snowflake -> IO E.Message
 getMessage euphCon getMessageCommandID = do
   GetMessageReply{..} <- sendPacket euphCon "get-message" GetMessageCommand{..}
   return getMessageReplyMessage
 
+-- | Implements <http://api.euphoria.io/#log>.
+--
+-- The 'messageLog' command requests messages from the room’s message log.
+-- This can be used to supplement the log provided by 'SnapshotEvent'
+-- (for example, when scrolling back further in history).
+--
+-- The command returns a list of 'E.Message's from the room’s message log.
+--
+-- > (log, Maybe before) <- messageLog con amount (Maybe before)
 messageLog :: Connection -> Integer -> Maybe E.Snowflake -> IO ([E.Message], Maybe E.Snowflake)
 messageLog euphCon logCommandN logCommandBefore = do
   LogReply{..} <- sendPacket euphCon "log" LogCommand{..}
   return (logReplyLog, logReplyBefore)
 
+-- | Implements <http://api.euphoria.io/#nick>.
+--
+-- The 'nick' command sets the name you present to the room.
+-- This name applies to all messages sent during this session,
+-- until the @nick@ command is called again.
+--
+-- The reply confirms the @nick@ command.
+-- It returns the session’s former and new names
+-- (the server may modify the requested nick).
+--
+-- > (from, to) <- nick con name
 nick :: Connection -> T.Text -> IO (E.Nick, E.Nick)
 nick euphCon nickCommandName = do
   NickReply{..} <- sendPacket euphCon "nick" NickCommand{..}
   return (nickReplyFrom, nickReplyTo)
 
+-- | Implements <http://api.euphoria.io/#send>.
+--
+-- The 'send' command sends a message to a room.
+-- The session must be successfully joined with the room.
+-- This message will be broadcast to all sessions joined with the room.
+--
+-- If the room is private, then the message content will be encrypted
+-- before it is stored and broadcast to the rest of the room.
+--
+-- The caller of this command will not receive the corresponding 'SendEvent',
+-- but will receive the same information in the reply.
+--
+-- The reply returns the 'E.Message' that was sent.
+-- This includes the message id ('E.Snowflake'), which was populated by the server.
+--
+-- > message <- send (Maybe parentID) content
 send :: Connection -> Maybe E.Snowflake -> T.Text -> IO E.Message
 send euphCon sendCommandParent sendCommandContent = do
   SendReply{..} <- sendPacket euphCon "send" SendCommand{..}
   return sendReplyMessage
 
+-- | Implements <http://api.euphoria.io/#who>.
+--
+-- The who command returns a list of sessions currently joined in the room.
+--
+-- > sessions <- who
 who :: Connection -> IO [E.SessionView]
 who euphCon = do
   WhoReply{..} <- sendPacket euphCon "who" WhoCommand
@@ -592,7 +660,7 @@ instance FromJSON GetMessageReply where
 -- log command and reply
 
 data LogCommand = LogCommand
-  { logCommandN :: Integer
+  { logCommandN      :: Integer
   , logCommandBefore :: Maybe E.Snowflake
   } deriving (Show)
 
@@ -600,12 +668,13 @@ instance ToJSON LogCommand where
   toJSON LogCommand{..} =
     object $ ("n" .= logCommandN) : ("before" .?= logCommandBefore)
 
+-- TODO: Maybe omit the "before" if it's always the same as the one from the command?
+-- TODO: Maybe always return a "before"?
 data LogReply = LogReply
-  { logReplyLog :: [E.Message]
+  { logReplyLog    :: [E.Message]
   , logReplyBefore :: Maybe E.Snowflake
   } deriving (Show)
 
--- TODO: Maybe always return a "before"?
 instance FromJSON LogReply where
   parseJSON = withObject "LogReply" $ \o -> do
     logReplyLog    <- o .: "log"

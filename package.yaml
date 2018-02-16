@@ -36,6 +36,7 @@ dependencies:
 - unordered-containers
   # other
 - stm
+- hslogger
 
 library:
   source-dirs: src

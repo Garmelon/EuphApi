@@ -20,10 +20,31 @@ import           Control.Monad
 import           Control.Monad.IO.Class
 
 import           Control.Concurrent.STM
-import qualified Data.Text as T
 import           Control.Monad.Trans.Reader
+import qualified Data.Text                  as T
+import qualified System.Log.Logger          as L
 
 import qualified EuphApi.Connection         as E
+
+-- logging functions
+moduleName :: String
+moduleName = "EuphApi.Bot"
+debugM     :: String -> IO ()
+debugM     = L.debugM moduleName
+infoM      :: String -> IO ()
+infoM      = L.infoM moduleName
+noticeM    :: String -> IO ()
+noticeM    = L.noticeM moduleName
+--warningM   :: String -> IO ()
+--warningM   = L.warningM moduleName
+--errorM     :: String -> IO ()
+--errorM     = L.errorM moduleName
+--criticalM  :: String -> IO ()
+--criticalM  = L.criticalM moduleName
+--alertM     :: String -> IO ()
+--alertM     = L.alertM moduleName
+--emergencyM :: String -> IO ()
+--emergencyM = L.emergencyM moduleName
 
 data BotState b c = BotState
   { bAddress           :: TVar String
@@ -83,6 +104,7 @@ runBot BotConfig{..} = do
   bPassword       <- atomically $ newTVar $ T.pack <$> botPassword
   bNick           <- atomically $ newTVar $ T.pack botNick
   bStopping       <- atomically $ newTVar False
+  noticeM $ "Connecting to &" ++ botRoom ++ " on " ++ show botAddress ++ "."
   bConnection     <- E.startEuphConnection botAddress botRoom
   bConnectionInfo <- botNewConnectionInfo
   let bHandler           = botHandler
@@ -90,7 +112,7 @@ runBot BotConfig{..} = do
       bNewConnectionInfo = botNewConnectionInfo
       bReconnectPolicy   = botReconnectPolicy
       state              = BotState{..}
-  runReaderT eventLoop state
+  runReaderT (eventLoop 0) state
 
 reconnect :: Integer -> Bot b c ()
 reconnect retries = do
@@ -98,32 +120,36 @@ reconnect retries = do
   stopping <- liftIO $ atomically $ readTVar $ bStopping state
   if stopping
     then return ()
-    else 
+    else
       case (bReconnectPolicy state $ retries) of
         Nothing    -> return ()
         Just delay -> do
+          liftIO $ infoM $ "Attempting reconnect in " ++ show (delay `div` 1000000)
+                           ++ "s (" ++ show delay ++ "µs)."
           liftIO $ threadDelay delay
           address <- liftIO $ atomically $ readTVar $ bAddress state
           room    <- liftIO $ atomically $ readTVar $ bRoom    state
           con     <- liftIO $ E.startEuphConnection address room
+          liftIO $ infoM $ "Reconnecting to &" ++ room ++ " on " ++ show address ++ "."
           conInfo <- liftIO $ bNewConnectionInfo state
           let newState = state{bConnection=con, bConnectionInfo=conInfo}
-          local (const newState) eventLoop
-          -- lift $ runReaderT eventLoop newState
+          local (const newState) (eventLoop retries)
+          -- lift $ runReaderT (eventLoop retries) newState
 
-eventLoop :: Bot b c ()
-eventLoop = do
+eventLoop :: Integer -> Bot b c ()
+eventLoop retries = do
   con     <- getConnection
   handler <- asks bHandler
   event   <- liftIO $ E.getEvent con
+  liftIO $ debugM $ "Received event: " ++ show event
   handler event
   case event of
-    E.ConnectionFailed -> reconnect 0
+    E.ConnectionFailed -> reconnect (retries + 1)
     E.Disconnected     -> reconnect 0
     E.EuphEvent e -> do
       handlePasswordStuff e
       handleNickStuff e
-      eventLoop
+      eventLoop retries
 
 handleNickStuff :: E.Event -> Bot b c ()
 handleNickStuff (E.SnapshotEvent _ _ _ maybeNick) = do
@@ -149,38 +175,3 @@ handlePasswordStuff (E.BounceEvent _ (Just options))
       Just p  -> fork $ liftIO $ E.auth con p
   | otherwise = return ()
 handlePasswordStuff _ = return ()
-
---
---
---
---
---
---
---
-
--- BOT EXAMPLE
-{-
-data MyConSpec = MyConSpec
-  { mySessionView :: TVar E.SessionView
-  , myListing     :: TVar E.Listing
-  , myArchive     :: TVar E.Archive
-  }
-
-instance ConSpecific MyConSpec where
-  newConSpecific = do
-    mySessionView <- newTVar empty
-    myListing     <- newTVar empty
-    myArchive     <- newTVar empty
-    return MyConSpec{..}
-
-myBotConfig :: BotConfig
-myBotConfig = defaultBotConfig{botNick="MyTestBot", botHandler=myHandler}
-
-myHandler :: E.Event -> Bot () MyConSpec ()
-myHandler e = undefined $ do
-  conSpec <- getConSpecific
-  upateOwnView e (mySessionView conSpec)
-  upateListing e (myListing conSpec)
-  upateArchive e (myArchive conSpec)
-  withEuphEvent e handleEuphEvent
--}

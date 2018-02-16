@@ -21,7 +21,7 @@ myBotConfig = E.BotConfig
   }
 
 main = do
-  myHandler <- LH.verboseStreamHandler stderr L.INFO
+  myHandler <- LH.verboseStreamHandler stdout L.INFO
   let myFormatter        = LF.simpleLogFormatter "<$time> [$loggername/$prio] $msg"
       myFormattedHandler = LH.setFormatter myHandler myFormatter
   L.updateGlobalLogger L.rootLoggerName (L.setHandlers [myFormattedHandler])

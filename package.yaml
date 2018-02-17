@@ -37,6 +37,7 @@ dependencies:
   # other
 - stm
 - hslogger
+- megaparsec
 
 library:
   source-dirs: src

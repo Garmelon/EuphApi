@@ -5,19 +5,18 @@ import qualified System.Log.Handler        as LH
 import qualified System.Log.Handler.Simple as LH
 import qualified System.Log.Logger         as L
 
-import qualified EuphApi.Bot               as E
-import qualified EuphApi.Connection        as E
+import qualified EuphApi.Bot               as B
 
-myBotConfig :: E.BotConfig () ()
-myBotConfig = E.BotConfig
-  { E.botAddress           = "euphoria.io"
-  , E.botRoom              = "test"
-  , E.botPassword          = Nothing
-  , E.botNick              = "EuphApiTestBot"
-  , E.botHandler           = const $ return ()
-  , E.botInfo              = ()
-  , E.botNewConnectionInfo = return ()
-  , E.botReconnectPolicy   = E.defaultReconnectPolicy
+myBotConfig :: B.BotConfig () ()
+myBotConfig = B.BotConfig
+  { B.botAddress           = "euphoria.io"
+  , B.botRoom              = "test"
+  , B.botPassword          = Nothing
+  , B.botNick              = "EuphApiTestBot"
+  , B.botHandler           = const $ return ()
+  , B.botInfo              = ()
+  , B.botNewConnectionInfo = return ()
+  , B.botReconnectPolicy   = B.defaultReconnectPolicy
   }
 
 main = do
@@ -26,4 +25,4 @@ main = do
       myFormattedHandler = LH.setFormatter myHandler myFormatter
   L.updateGlobalLogger L.rootLoggerName (L.setHandlers [myFormattedHandler])
   L.updateGlobalLogger L.rootLoggerName (L.setLevel L.INFO)
-  E.runBot myBotConfig
+  B.runBot myBotConfig

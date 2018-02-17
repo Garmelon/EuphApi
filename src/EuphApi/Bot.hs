@@ -4,6 +4,15 @@
 -- | This module lets you create bots, although it only contains the bare minimum necessary.
 -- It defines the 'Bot' monad which takes care of a few things common to most bots.
 --
+-- The module is meant to be imported qualified, under a different name than all the
+-- other EuphApi modules.
+-- For example:
+--
+-- > import qualified EuphApi.Bot        as B
+-- > import qualified EuphApi.Connection as E
+-- > import qualified EuphApi.Types      as E
+-- > import qualified EuphApi.Utils      as E
+--
 -- = The 'Bot' monad
 --
 -- This monad takes care of
@@ -62,7 +71,6 @@ module EuphApi.Bot (
     Bot
   , BotConfig(..)
   , runBot
-  -- * Bot commands
   -- * Utilities
   , fork
   , defaultReconnectPolicy
@@ -72,6 +80,15 @@ module EuphApi.Bot (
   , getConnection
   , getConnectionInfo
   , getConnectTime
+  -- * Bot commands
+  , stop
+  , send
+  , reply
+  , nick
+  , getMessage
+  , messageLog
+  , messageLogAfter
+  , who
   ) where
 
 import           Control.Concurrent
@@ -85,6 +102,7 @@ import           Data.Time
 import qualified System.Log.Logger          as L
 
 import qualified EuphApi.Connection         as E
+import qualified EuphApi.Types              as E
 
 -- logging functions
 moduleName :: String
@@ -277,8 +295,8 @@ handleNickStuff (E.SnapshotEvent _ _ _ maybeNick) = do
   con       <- getConnection
   case maybeNick of
     Nothing -> fork $ liftIO $ E.nick con myNick
-    Just nick ->
-      if nick == myNick
+    Just curNick ->
+      if curNick == myNick
         then return ()
         else fork $ liftIO $ E.nick con myNick
 handleNickStuff _ = return ()
@@ -298,3 +316,57 @@ handlePasswordStuff _ = return ()
 {-
  - Commands
  -}
+
+-- | Stop the bot.
+stop :: Bot b c ()
+stop = do
+  stopping <- asks bStopping
+  con <- asks bConnection
+  liftIO $ do
+    atomically $ writeTVar stopping False
+    E.disconnect con
+
+-- | Send a new message.
+send :: T.Text -> Bot b c E.Message
+send content = do
+  con <- asks bConnection
+  liftIO $ E.send con Nothing content
+
+-- | Reply to a message.
+reply :: E.Snowflake -> T.Text -> Bot b c E.Message
+reply parentID content = do
+  con <- asks bConnection
+  liftIO $ E.send con (Just parentID) content
+
+-- | Change the bot's nick.
+nick :: T.Text -> Bot b c (T.Text, T.Text)
+nick newNick = do
+  myNick <- asks bNick
+  con <- asks bConnection
+  liftIO $ do
+    atomically $ writeTVar myNick newNick
+    E.nick con newNick
+
+-- | Request an untruncated message.
+getMessage :: E.Snowflake -> Bot b c E.Message
+getMessage messageID = do
+  con <- asks bConnection
+  liftIO $ E.getMessage con messageID
+
+-- | Request the n most recent messages (similar to the 'E.SnapshotEvent').
+messageLog :: Integer -> Bot b c ([E.Message], Maybe E.Snowflake)
+messageLog n = do
+  con <- asks bConnection
+  liftIO $ E.messageLog con n Nothing
+
+-- | Request the n messages preceding a certain message.
+messageLogAfter :: E.Snowflake -> Integer -> Bot b c ([E.Message], Maybe E.Snowflake)
+messageLogAfter messageID n = do
+  con <- asks bConnection
+  liftIO $ E.messageLog con n (Just messageID)
+
+-- | Request a listing of all currently connected sessions.
+who :: Bot b c [E.SessionView]
+who = do
+  con <- asks bConnection
+  liftIO $ E.who con

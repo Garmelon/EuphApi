@@ -17,7 +17,6 @@ module EuphApi.Utils (
 
 import           Control.Monad
 import           Data.Char
-import           Data.Maybe
 
 import qualified Data.Text       as T
 import qualified Text.Megaparsec as P
@@ -35,7 +34,7 @@ import qualified EuphApi.Types   as E
 -- This removes spaces and some extra characters, while trying to stay close to
 -- the original nick.
 mention :: T.Text -> T.Text
-mention = T.filter (\c -> (not $ isSpace c) && (not $ c `elem` ".!?;&<'\""))
+mention = T.filter (\c -> not (isSpace c) && notElem c ".!?;&<'\"")
 
 -- | Same as 'atMention', but prepends an `@` character.
 atMention :: T.Text -> T.Text
@@ -70,7 +69,7 @@ runCommandsFromMessage cs = runCommands cs . E.msgContent
 
 -- | Creates a 'Command' from a parser and a bot action.
 commandFromParser :: (Ord e) => P.Parsec e T.Text a -> (a -> B.Bot b c ()) -> Command b c
-commandFromParser p f t = fromMaybe (return ()) $ f <$> P.parseMaybe p t
+commandFromParser p f t = maybe (return ()) f $ P.parseMaybe p t
 
 command :: T.Text -> B.Bot b c () -> Command b c
 command = undefined

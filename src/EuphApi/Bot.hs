@@ -80,6 +80,7 @@ module EuphApi.Bot (
   , getConnection
   , getConnectionInfo
   , getConnectTime
+  , getOwnView
   -- * Bot commands
   , stop
   , send
@@ -89,9 +90,12 @@ module EuphApi.Bot (
   , messageLog
   , messageLogAfter
   , who
+  -- * Exceptions
+  , BotException
   ) where
 
 import           Control.Concurrent
+import           Control.Exception
 import           Control.Monad
 import           Control.Monad.IO.Class
 
@@ -139,6 +143,7 @@ data BotState b c = BotState
   , bConnection        :: E.Connection
   , bConnectionInfo    :: c -- connection specific, user-defined info type
   , bConnectTime       :: UTCTime
+  , bOwnView           :: TVar (Maybe E.SessionView)
   }
 
 -- | The monad that bots are written in.
@@ -214,6 +219,17 @@ getConnection = asks bConnection
 getConnectionInfo :: Bot b c c
 getConnectionInfo = asks bConnectionInfo
 
+-- | Returns the 'E.SessionView' of the current connection.
+--
+-- Might throw a 'NoOwnViewYet' exception.
+getOwnView :: Bot b c E.SessionView
+getOwnView = do
+  var   <- asks bOwnView
+  mView <- liftIO $ atomically $ readTVar var
+  case mView of
+    Just view -> return view
+    Nothing   -> liftIO $ throwIO NoOwnViewYet
+
 -- | A default reconnect policy that waits an exponentially increasing amount
 -- of seconds between retries.
 defaultReconnectPolicy :: Integer -> Maybe Int
@@ -231,10 +247,11 @@ runBot BotConfig{..} = do
   bPassword       <- atomically $ newTVar $ T.pack <$> botPassword
   bNick           <- atomically $ newTVar $ T.pack botNick
   bStopping       <- atomically $ newTVar False
+  bOwnView        <- atomically $ newTVar Nothing
   noticeM $ "Connecting to &" ++ botRoom ++ " on " ++ show botAddress ++ "."
+  bConnectionInfo <- botNewConnectionInfo
   bStartTime      <- getCurrentTime
   bConnection     <- E.startEuphConnection botAddress botRoom
-  bConnectionInfo <- botNewConnectionInfo
   let bHandler           = botHandler
       bBotInfo           = botInfo
       bNewConnectionInfo = botNewConnectionInfo
@@ -250,7 +267,7 @@ reconnect retries = do
   if stopping
     then return ()
     else
-      case (bReconnectPolicy state $ retries) of
+      case bReconnectPolicy state retries of
         Nothing    -> return ()
         Just delay -> do
           liftIO $ infoM $ "Attempting reconnect in " ++ show (delay `div` 1000000)
@@ -258,11 +275,16 @@ reconnect retries = do
           liftIO $ threadDelay delay
           address <- liftIO $ atomically $ readTVar $ bAddress state
           room    <- liftIO $ atomically $ readTVar $ bRoom    state
-          now     <- liftIO $ getCurrentTime
-          con     <- liftIO $ E.startEuphConnection address room
+          now     <- liftIO getCurrentTime
+          ownView <- liftIO $ atomically $ newTVar Nothing
           liftIO $ infoM $ "Reconnecting to &" ++ room ++ " on " ++ show address ++ "."
           conInfo <- liftIO $ bNewConnectionInfo state
-          let newState = state{bConnection=con, bConnectionInfo=conInfo, bConnectTime=now}
+          con     <- liftIO $ E.startEuphConnection address room
+          let newState = state{ bConnection=con
+                              , bConnectionInfo=conInfo
+                              , bConnectTime=now
+                              , bOwnView=ownView
+                              }
           local (const newState) (eventLoop retries)
           -- lift $ runReaderT (eventLoop retries) newState
 
@@ -279,6 +301,7 @@ eventLoop retries = do
     E.EuphEvent e -> do
       handlePingStuff e
       handlePasswordStuff e
+      handleOwnViewStuff e
       handleNickStuff e
       eventLoop retries
 
@@ -291,7 +314,7 @@ handlePingStuff _ = return ()
 handleNickStuff :: E.Event -> Bot b c ()
 handleNickStuff (E.SnapshotEvent _ _ _ maybeNick) = do
   myNickVar <- asks bNick
-  myNick    <- liftIO $ atomically $ readTVar $ myNickVar
+  myNick    <- liftIO $ atomically $ readTVar myNickVar
   con       <- getConnection
   case maybeNick of
     Nothing -> fork $ liftIO $ E.nick con myNick
@@ -305,13 +328,29 @@ handlePasswordStuff :: E.Event -> Bot b c ()
 handlePasswordStuff (E.BounceEvent _ (Just options))
   | "passcode" `elem` options = do
     myPasswordVar <- asks bPassword
-    myPassword    <- liftIO $ atomically $ readTVar $ myPasswordVar
+    myPassword    <- liftIO $ atomically $ readTVar myPasswordVar
     con           <- getConnection
     case myPassword of
       Nothing -> fork $ liftIO $ E.disconnect con -- TODO: Do something here
       Just p  -> fork $ liftIO $ E.auth con p
   | otherwise = return () -- TODO: And also here
 handlePasswordStuff _ = return ()
+
+handleOwnViewStuff :: E.Event -> Bot b c ()
+handleOwnViewStuff (E.HelloEvent view _ _) = do
+  var <- asks bOwnView
+  liftIO $ atomically $ writeTVar var (Just view)
+handleOwnViewStuff (E.SnapshotEvent _ _ _ (Just curNick)) = do
+  var <- asks bOwnView
+  liftIO $ atomically $ changeOwnNick var curNick
+handleOwnViewStuff _ = return ()
+
+changeOwnNick :: TVar (Maybe E.SessionView) -> T.Text -> STM ()
+changeOwnNick var newNick = do
+  mView <- readTVar var
+  case mView of
+    Just view -> writeTVar var (Just view{E.sessName=newNick})
+    Nothing   -> return ()
 
 {-
  - Commands
@@ -342,10 +381,13 @@ reply parentID content = do
 nick :: T.Text -> Bot b c (T.Text, T.Text)
 nick newNick = do
   myNick <- asks bNick
-  con <- asks bConnection
+  var    <- asks bOwnView
+  con    <- asks bConnection
   liftIO $ do
     atomically $ writeTVar myNick newNick
-    E.nick con newNick
+    r@(_, to) <- E.nick con newNick
+    atomically $ changeOwnNick var to
+    return r
 
 -- | Request an untruncated message.
 getMessage :: E.Snowflake -> Bot b c E.Message
@@ -370,3 +412,17 @@ who :: Bot b c [E.SessionView]
 who = do
   con <- asks bConnection
   liftIO $ E.who con
+
+{-
+ - Exceptions
+ -}
+
+-- | Exceptions that the bot throws.
+data BotException = NoOwnViewYet
+                    -- ^ The bot has not received a SessionView for its current connection
+                    -- from the server yet.
+
+instance Show BotException where
+  show NoOwnViewYet = "Bot hasn't received a SessionView of itself yet."
+
+instance Exception BotException

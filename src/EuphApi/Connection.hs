@@ -295,7 +295,7 @@ sendPacket euphCon packetType packetData = do
   atomically $ writeSend euphCon packet
   result <- readMVar var
   case result of
-    Left f  -> throw f
+    Left f  -> throwIO f
     Right r -> return r
 
 sendPacketNoReply :: (ToJSON p) => Connection -> T.Text -> p -> IO ()

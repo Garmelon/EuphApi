@@ -7,6 +7,7 @@ module EuphApi.Utils (
     mention
   , atMention
   , mentionReduce
+  , similar
   -- * Commands
   , Command
   , CommandName
@@ -91,21 +92,24 @@ withNick f = (f . E.sessName) <$> B.getOwnView
 -- | Creates a 'Command' from a parser and a bot action.
 commandFromParser :: (Ord e)
                   => B.Bot b c (P.Parsec e T.Text a)
-                  -> (a -> B.Bot b c ())
+                  -> (a -> E.Message -> B.Bot b c ())
                   -> Command b c
-commandFromParser p f = withContent $ \t -> do
+commandFromParser p f m = do
+  let content = E.msgContent m
   parser <- p
-  forM_ (P.parseMaybe parser t) f
+  forM_ (P.parseMaybe parser content) (`f` m)
 
 type Parser = P.Parsec Void T.Text
 
-command :: T.Text -> (T.Text -> B.Bot b c ()) -> Command b c
-command c = commandFromParser
-          $ return (commandParser c :: Parser T.Text)
+command :: T.Text -> (E.Message -> B.Bot b c ()) -> Command b c
+command c f =
+  commandFromParser (return (commandParser c :: Parser () ))
+                    (const f)
 
-specificCommand :: T.Text -> (T.Text -> B.Bot b c ()) -> Command b c
-specificCommand c = commandFromParser
-                  $ withNick (specificCommandParser c :: T.Text -> Parser T.Text)
+specificCommand :: T.Text -> (E.Message -> B.Bot b c ()) -> Command b c
+specificCommand c f =
+  commandFromParser (withNick (specificCommandParser c :: T.Text -> Parser () ))
+                    (const f)
 
 {-
  - Parsers
@@ -118,17 +122,19 @@ mentionParser = P.label "mention"
 atMentionParser :: (Ord e) => P.Parsec e T.Text T.Text
 atMentionParser = P.label "atMention" $ P.char '@' *> mentionParser
 
-commandParser :: (Ord e) => T.Text -> P.Parsec e T.Text T.Text
+commandParser :: (Ord e) => T.Text -> P.Parsec e T.Text ()
 commandParser c = P.label "command" $ do
   P.space
   void $ P.char '!' >> P.string c -- command
-  ("" <$ P.eof) P.<|> (P.space1 *> P.takeRest)
+  P.space
+  P.eof
 
-specificCommandParser :: (Ord e) => T.Text -> T.Text -> P.Parsec e T.Text T.Text
+specificCommandParser :: (Ord e) => T.Text -> T.Text -> P.Parsec e T.Text ()
 specificCommandParser c nick = P.label "specific command" $ do
   P.space
   void $ P.char '!' >> P.string c -- command
   P.space1                        -- separator
   m <- atMentionParser            -- @mention
   guard $ m `similar` nick
-  ("" <$ P.eof) P.<|> (P.space1 *> P.takeRest)
+  P.space
+  P.eof

@@ -6,8 +6,8 @@ import           System.Environment
 
 import qualified Data.Text          as T
 
-import qualified EuphApi            as E
 import qualified EuphApi.Connection as E
+import qualified EuphApi.Types      as E
 
 
 runBot :: String -> IO ()
@@ -27,10 +27,10 @@ handleEuphEvent :: E.Connection -> E.Event -> IO ()
 handleEuphEvent con (E.PingEvent time _) = do
   E.pingReply con time
   putStrLn "Pong!"
-handleEuphEvent con (E.BounceEvent _ _) = do
+handleEuphEvent con E.BounceEvent{} = do
   E.disconnect con
   putStrLn "Room is private. And I don't have a password."
-handleEuphEvent con (E.HelloEvent _ _ _) = do
+handleEuphEvent con E.HelloEvent{} = do
   void $ E.nick con "EuphApi test bot"
   putStrLn "Set nick"
 handleEuphEvent con (E.JoinEvent sess) = do

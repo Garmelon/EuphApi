@@ -293,7 +293,6 @@ eventLoop retries = do
   con     <- getConnection
   handler <- asks bHandler
   event   <- liftIO $ E.getEvent con
-  liftIO $ debugM $ "Received event: " ++ show event
   handler event
   case event of
     E.ConnectionFailed -> reconnect (retries + 1)
@@ -315,13 +314,12 @@ handleNickStuff :: E.Event -> Bot b c ()
 handleNickStuff (E.SnapshotEvent _ _ _ maybeNick) = do
   myNickVar <- asks bNick
   myNick    <- liftIO $ atomically $ readTVar myNickVar
-  con       <- getConnection
   case maybeNick of
-    Nothing -> fork $ liftIO $ E.nick con myNick
+    Nothing -> fork $ nick myNick
     Just curNick ->
       if curNick == myNick
         then return ()
-        else fork $ liftIO $ E.nick con myNick
+        else fork $ nick myNick
 handleNickStuff _ = return ()
 
 handlePasswordStuff :: E.Event -> Bot b c ()
@@ -339,9 +337,11 @@ handlePasswordStuff _ = return ()
 handleOwnViewStuff :: E.Event -> Bot b c ()
 handleOwnViewStuff (E.HelloEvent view _ _) = do
   var <- asks bOwnView
+  liftIO $ debugM $ "Received new own view on HelloEvent: " ++ show view
   liftIO $ atomically $ writeTVar var (Just view)
 handleOwnViewStuff (E.SnapshotEvent _ _ _ (Just curNick)) = do
   var <- asks bOwnView
+  liftIO $ debugM $ "SnapshotEvent reported a nick. This should not happen in a bot."
   liftIO $ atomically $ changeOwnNick var curNick
 handleOwnViewStuff _ = return ()
 
@@ -364,6 +364,7 @@ stop = do
   liftIO $ do
     atomically $ writeTVar stopping False
     E.disconnect con
+    noticeM "Bot was stopped."
 
 -- | Send a new message.
 send :: T.Text -> Bot b c E.Message
@@ -385,7 +386,8 @@ nick newNick = do
   con    <- asks bConnection
   liftIO $ do
     atomically $ writeTVar myNick newNick
-    r@(_, to) <- E.nick con newNick
+    r@(from, to) <- E.nick con newNick
+    infoM $ "Changed own nick from " ++ show from ++ " to " ++ show to ++ "."
     atomically $ changeOwnNick var to
     return r
 

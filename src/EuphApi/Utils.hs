@@ -8,6 +8,10 @@ module EuphApi.Utils (
   , atMention
   , mentionReduce
   , similar
+  -- * Time manipulation
+  , printUTCTime
+  , printNominalDiffTime
+  , printUptime
   -- * Commands
   , Command
   , CommandName
@@ -31,6 +35,7 @@ import           Data.Function
 import           Data.Void
 
 import qualified Data.Text            as T
+import           Data.Time
 import qualified Text.Megaparsec      as P
 import qualified Text.Megaparsec.Char as P
 
@@ -63,6 +68,35 @@ mentionReduce = T.map toLower . mention
 -- | Compare two nicks using 'mentionReduce'.
 similar :: T.Text -> T.Text -> Bool
 similar = (==) `on` mentionReduce
+
+{-
+ - Time manipulation
+ -}
+
+printUTCTime :: UTCTime -> String
+printUTCTime = formatTime defaultTimeLocale "%F %T %Z"
+
+printNominalDiffTime :: NominalDiffTime -> String
+printNominalDiffTime n =
+  let nr = abs $ round n :: Integer
+      (w, wr) = nr `quotRem` (60 * 60 * 24 * 7)
+      (d, dr) = wr `quotRem` (60 * 60 * 24    )
+      (h, hr) = dr `quotRem` (60 * 60         )
+      (m, s ) = hr `quotRem`  60
+      ws = if w /= 0 then show w ++ "w " else ""
+      ds = if d /= 0 then show d ++ "d " else ""
+      hs = if h /= 0 then show h ++ "h " else ""
+      ms = if m /= 0 then show m ++ "m " else ""
+      ss =                show s ++ "s"
+      sign = if n < 0 then "-" else ""
+  in  sign ++ ws ++ ds ++ hs ++ ms ++ ss
+
+printUptime :: UTCTime -> UTCTime -> String
+printUptime start now =
+  let diff    = diffUTCTime now start
+      upSince = printUTCTime start
+      upFor   = printNominalDiffTime diff
+  in  "/me has been up since " ++ upSince ++ " (" ++ upFor ++ ")."
 
 {-
  - Commands

@@ -11,12 +11,14 @@ module EuphApi.Utils.Botrulez
   ) where
 
 import           Control.Monad
+import           Control.Monad.IO.Class
 
-import qualified Data.Text     as T
+import qualified Data.Text              as T
+import           Data.Time
 
-import qualified EuphApi.Bot   as B
-import qualified EuphApi.Types as E
-import qualified EuphApi.Utils as E
+import qualified EuphApi.Bot            as B
+import qualified EuphApi.Types          as E
+import qualified EuphApi.Utils          as E
 
 pingCommand :: E.Command b c
 pingCommand = E.specificCommand "ping" $ \msg ->
@@ -34,13 +36,17 @@ generalHelpCommand :: T.Text -> E.Command b c
 generalHelpCommand helpText = E.command "help" $ \msg ->
   void $ B.reply (E.msgID msg) helpText
 
+uptime :: E.Message -> B.Bot b c ()
+uptime msg = do
+  startTime <- B.getStartTime
+  curTime <- liftIO getCurrentTime
+  void $ B.reply (E.msgID msg) (T.pack $ E.printUptime startTime curTime)
+
 uptimeCommand :: E.Command b c
-uptimeCommand = E.specificCommand "uptime" $ \msg ->
-  void $ B.reply (E.msgID msg) "uptime placeholder"
+uptimeCommand = E.specificCommand "uptime" uptime
 
 generalUptimeCommand :: E.Command b c
-generalUptimeCommand = E.command "uptime" $ \msg ->
-  void $ B.reply (E.msgID msg) "uptime placeholder"
+generalUptimeCommand = E.command "uptime" uptime
 
 killCommand :: E.Command b c
 killCommand = E.specificCommand "kill" $ \msg -> do

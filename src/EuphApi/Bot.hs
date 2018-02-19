@@ -341,7 +341,7 @@ handleOwnViewStuff (E.HelloEvent view _ _) = do
   liftIO $ atomically $ writeTVar var (Just view)
 handleOwnViewStuff (E.SnapshotEvent _ _ _ (Just curNick)) = do
   var <- asks bOwnView
-  liftIO $ debugM $ "SnapshotEvent reported a nick. This should not happen in a bot."
+  liftIO $ debugM "SnapshotEvent reported a nick. This should not happen in a bot."
   liftIO $ atomically $ changeOwnNick var curNick
 handleOwnViewStuff _ = return ()
 

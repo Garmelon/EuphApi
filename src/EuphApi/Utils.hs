@@ -1,3 +1,5 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 -- | Some useful functions for bots.
 
 module EuphApi.Utils (
@@ -7,22 +9,32 @@ module EuphApi.Utils (
   , mentionReduce
   -- * Commands
   , Command
+  , CommandName
   , runCommands
-  , runCommandsFromMessage
   -- ** Creating commands
   , command
   , specificCommand
   , commandFromParser
+  , withContent
+  , withNick
+  -- ** Useful parsers
+  , mentionParser
+  , atMentionParser
+  , commandParser
+  , specificCommandParser
   ) where
 
 import           Control.Monad
 import           Data.Char
+import           Data.Function
+import           Data.Void
 
-import qualified Data.Text       as T
-import qualified Text.Megaparsec as P
+import qualified Data.Text            as T
+import qualified Text.Megaparsec      as P
+import qualified Text.Megaparsec.Char as P
 
-import qualified EuphApi.Bot     as B
-import qualified EuphApi.Types   as E
+import qualified EuphApi.Bot          as B
+import qualified EuphApi.Types        as E
 
 {-
  - Nick manipulation
@@ -34,7 +46,7 @@ import qualified EuphApi.Types   as E
 -- This removes spaces and some extra characters, while trying to stay close to
 -- the original nick.
 mention :: T.Text -> T.Text
-mention = T.filter (\c -> not (isSpace c) && notElem c ".!?;&<'\"")
+mention = T.filter (\c -> not (isSpace c) && notElem c (".!?;&<'\"" :: String))
 
 -- | Same as 'atMention', but prepends an `@` character.
 atMention :: T.Text -> T.Text
@@ -47,6 +59,10 @@ atMention = T.cons '@' . mention
 mentionReduce :: T.Text -> T.Text
 mentionReduce = T.map toLower . mention
 
+-- | Compare two nicks using 'mentionReduce'.
+similar :: T.Text -> T.Text -> Bool
+similar = (==) `on` mentionReduce
+
 {-
  - Commands
  -}
@@ -55,24 +71,64 @@ mentionReduce = T.map toLower . mention
 --
 -- If you just want to add a simple command, see 'command' and 'specificCommand'.
 -- For more flexibility/more regex-like functionality, see 'commandFromParser'.
-type Command b c = T.Text -> B.Bot b c ()
+type Command b c = E.Message -> B.Bot b c ()
+
+-- | Alias for the string after the @!@, for example: @\"help\"@ for the command: @!help@.
+type CommandName = T.Text
 
 -- | Runs a list of commands.
-runCommands :: [Command b c] -> T.Text -> B.Bot b c ()
--- runCommands cs t = void $ sequence $ map ($t) cs
--- runCommands cs t = void . sequence $ cs <*> pure t
+runCommands :: [Command b c] -> E.Message -> B.Bot b c ()
+-- runCommands cs m = void $ sequence $ map ($m) cs
+-- runCommands cs m = void . sequence $ cs <*> pure m
 runCommands cs = void . sequence . sequence cs
 
--- | Runs a list of commands, using the content of a 'E.Message'.
-runCommandsFromMessage :: [Command b c] -> E.Message -> B.Bot b c ()
-runCommandsFromMessage cs = runCommands cs . E.msgContent
+withContent :: (T.Text -> a) -> E.Message -> a
+withContent f = f . E.msgContent
+
+withNick :: (T.Text -> a) -> B.Bot b c a
+withNick f = (f . E.sessName) <$> B.getOwnView
 
 -- | Creates a 'Command' from a parser and a bot action.
-commandFromParser :: (Ord e) => P.Parsec e T.Text a -> (a -> B.Bot b c ()) -> Command b c
-commandFromParser p f t = maybe (return ()) f $ P.parseMaybe p t
+commandFromParser :: (Ord e)
+                  => B.Bot b c (P.Parsec e T.Text a)
+                  -> (a -> B.Bot b c ())
+                  -> Command b c
+commandFromParser p f = withContent $ \t -> do
+  parser <- p
+  forM_ (P.parseMaybe parser t) f
 
-command :: T.Text -> B.Bot b c () -> Command b c
-command = undefined
+type Parser = P.Parsec Void T.Text
 
-specificCommand :: T.Text -> B.Bot b c () -> Command b c
-specificCommand = undefined
+command :: T.Text -> (T.Text -> B.Bot b c ()) -> Command b c
+command c = commandFromParser
+          $ return (commandParser c :: Parser T.Text)
+
+specificCommand :: T.Text -> (T.Text -> B.Bot b c ()) -> Command b c
+specificCommand c = commandFromParser
+                  $ withNick (specificCommandParser c :: T.Text -> Parser T.Text)
+
+{-
+ - Parsers
+ -}
+
+mentionParser :: (Ord e) => P.Parsec e T.Text T.Text
+mentionParser = P.label "mention"
+              $ P.takeWhile1P (Just "non-space character") (not . isSpace)
+
+atMentionParser :: (Ord e) => P.Parsec e T.Text T.Text
+atMentionParser = P.label "atMention" $ P.char '@' *> mentionParser
+
+commandParser :: (Ord e) => T.Text -> P.Parsec e T.Text T.Text
+commandParser c = P.label "command" $ do
+  P.space
+  void $ P.char '!' >> P.string c -- command
+  ("" <$ P.eof) P.<|> (P.space1 *> P.takeRest)
+
+specificCommandParser :: (Ord e) => T.Text -> T.Text -> P.Parsec e T.Text T.Text
+specificCommandParser c nick = P.label "specific command" $ do
+  P.space
+  void $ P.char '!' >> P.string c -- command
+  P.space1                        -- separator
+  m <- atMentionParser            -- @mention
+  guard $ m `similar` nick
+  ("" <$ P.eof) P.<|> (P.space1 *> P.takeRest)

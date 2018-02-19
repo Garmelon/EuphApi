@@ -1,11 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 import           Control.Monad
-import           Control.Monad.IO.Class
 import           Data.Monoid
 import           System.IO
 
-import qualified Data.Text                 as T
 import qualified System.Log.Formatter      as LF
 import qualified System.Log.Handler        as LH
 import qualified System.Log.Handler.Simple as LH

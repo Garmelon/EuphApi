@@ -113,9 +113,9 @@ type CommandName = T.Text
 
 -- | Runs a list of commands.
 runCommands :: [Command b c] -> E.Message -> B.Bot b c ()
--- runCommands cs m = void $ sequence $ map ($m) cs
--- runCommands cs m = void . sequence $ cs <*> pure m
-runCommands cs = void . sequence . sequence cs
+-- runCommands cs m = mapM_ B.fork $ map ($m) cs
+-- runCommands cs m = mapM_ B.fork $ cs <*> pure m
+runCommands cs = mapM_ B.fork . sequence cs
 
 withContent :: (T.Text -> a) -> E.Message -> a
 withContent f = f . E.msgContent

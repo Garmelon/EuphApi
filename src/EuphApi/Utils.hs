@@ -20,8 +20,6 @@ module EuphApi.Utils (
   , command
   , specificCommand
   , commandFromParser
-  , withContent
-  , withNick
   -- ** Useful parsers
   , mentionParser
   , atMentionParser
@@ -73,9 +71,17 @@ similar = (==) `on` mentionReduce
  - Time manipulation
  -}
 
+-- | Convert a 'UTCTime' into a 'String' of the format:
+-- @yyyy-mm-dd HH:MM:SS UTC@.
+--
+-- Example: @2018-02-13 20:43:33 UTC@
 printUTCTime :: UTCTime -> String
 printUTCTime = formatTime defaultTimeLocale "%F %T %Z"
 
+-- | Convert a 'NominalDiffTime' into a 'String' of the format:
+-- @[[[[w] d] h] m] s@ (weeks, days, hours, minutes, seconds)
+--
+-- Examples: @3h 12m 55s@ and @4w 6d 1h 0m 0s@
 printNominalDiffTime :: NominalDiffTime -> String
 printNominalDiffTime n =
   let nr = abs $ round n :: Integer
@@ -91,6 +97,12 @@ printNominalDiffTime n =
       sign = if n < 0 then "-" else ""
   in  sign ++ ws ++ ds ++ hs ++ ms ++ ss
 
+-- | @printUptime start now@ converts the two times @start@ and @now@
+-- into a string of the following format, according to the botrulez:
+--
+-- @/me has been up since \<start\> (\<now - start\>).@
+--
+-- Example: @/me has been up since 2018-02-13 20:43:33 UTC (3h 12m 55s).@
 printUptime :: UTCTime -> UTCTime -> String
 printUptime start now =
   let diff    = diffUTCTime now start
@@ -115,15 +127,18 @@ type CommandName = T.Text
 runCommands :: [Command b c] -> E.Message -> B.Bot b c ()
 -- runCommands cs m = mapM_ B.fork $ map ($m) cs
 -- runCommands cs m = mapM_ B.fork $ cs <*> pure m
-runCommands cs = mapM_ B.fork . sequence cs
-
-withContent :: (T.Text -> a) -> E.Message -> a
-withContent f = f . E.msgContent
+-- runCommands cs = mapM_ B.fork . sequence cs
+runCommands cs m = mapM_ (B.fork . ($m)) cs
 
 withNick :: (T.Text -> a) -> B.Bot b c a
 withNick f = (f . E.sessName) <$> B.getOwnView
 
 -- | Creates a 'Command' from a parser and a bot action.
+--
+-- > commandFromParser parser action
+--
+-- The parser is enclosed in a 'Bot' so that it may access the bot's current state,
+-- for example the bot's current nick.
 commandFromParser :: (Ord e)
                   => B.Bot b c (P.Parsec e T.Text a)
                   -> (a -> E.Message -> B.Bot b c ())
@@ -135,11 +150,19 @@ commandFromParser p f m = do
 
 type Parser = P.Parsec Void T.Text
 
+-- | Creates a general command: @!command@
+--
+-- If you want to parse arguments too, use 'commandFromParser'
+-- and write your own parser using 'commandParser'.
 command :: T.Text -> (E.Message -> B.Bot b c ()) -> Command b c
 command c f =
   commandFromParser (return (commandParser c :: Parser () ))
                     (const f)
 
+-- | Creates a specific command: @!command \@botname@
+--
+-- If you want to parse arguments too, use 'commandFromParser'
+-- and write your own parser using 'specificCommandParser'.
 specificCommand :: T.Text -> (E.Message -> B.Bot b c ()) -> Command b c
 specificCommand c f =
   commandFromParser (withNick (specificCommandParser c :: T.Text -> Parser () ))
@@ -149,13 +172,21 @@ specificCommand c f =
  - Parsers
  -}
 
+-- | Parse a mention (without the @\@@).
+--
+-- This parser basically parses all non-space characters until the next space
+-- or end of input:
+--
+-- @'P.takeWhile1P' (Just \"non-space character\") (not . 'isSpace')@
 mentionParser :: (Ord e) => P.Parsec e T.Text T.Text
 mentionParser = P.label "mention"
               $ P.takeWhile1P (Just "non-space character") (not . isSpace)
 
+-- | Similar to 'mentionParser', but includes the @\@@.
 atMentionParser :: (Ord e) => P.Parsec e T.Text T.Text
 atMentionParser = P.label "atMention" $ P.char '@' *> mentionParser
 
+-- | Parse a general command: @!command@
 commandParser :: (Ord e) => T.Text -> P.Parsec e T.Text ()
 commandParser c = P.label "command" $ do
   P.space
@@ -163,6 +194,7 @@ commandParser c = P.label "command" $ do
   P.space
   P.eof
 
+-- | Parse a specific command: @!command \@botname@
 specificCommandParser :: (Ord e) => T.Text -> T.Text -> P.Parsec e T.Text ()
 specificCommandParser c nick = P.label "specific command" $ do
   P.space

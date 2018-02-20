@@ -91,7 +91,7 @@ module EuphApi.Bot (
   , messageLogAfter
   , who
   -- * Exceptions
-  , BotException
+  , BotException(..)
   ) where
 
 import           Control.Concurrent

@@ -20,13 +20,13 @@ import qualified EuphApi.Bot            as B
 import qualified EuphApi.Types          as E
 import qualified EuphApi.Utils          as E
 
-pingCommand :: E.Command b c
-pingCommand = E.specificCommand "ping" $ \msg ->
-  void $ B.reply (E.msgID msg) "Pong!"
+pingCommand :: T.Text -> E.Command b c
+pingCommand pingText = E.specificCommand "ping" $ \msg ->
+  void $ B.reply (E.msgID msg) pingText
 
-generalPingCommand :: E.Command b c
-generalPingCommand = E.command "ping" $ \msg ->
-  void $ B.reply (E.msgID msg) "Pong!"
+generalPingCommand :: T.Text -> E.Command b c
+generalPingCommand pingText = E.command "ping" $ \msg ->
+  void $ B.reply (E.msgID msg) pingText
 
 helpCommand :: T.Text -> E.Command b c
 helpCommand helpText = E.specificCommand "help" $ \msg ->

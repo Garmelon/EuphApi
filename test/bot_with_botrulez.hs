@@ -17,15 +17,16 @@ import qualified EuphApi.Utils.Botrulez    as E
 
 myCommands :: [E.Command b c]
 myCommands =
-  [ E.pingCommand
-  , E.generalPingCommand
+  [ E.pingCommand "Pong!"
+  , E.generalPingCommand "Pong!"
   , E.helpCommand "Some specific placeholder help"
   , E.generalHelpCommand "I help test @Garmy's EuphApi"
   , E.uptimeCommand
-  , E.generalUptimeCommand
+  , E.generalUptimeCommand -- most bots don't do this
   , E.command "whatsmynick" (\msg -> do
       nick <- E.sessName <$> B.getOwnView
-      let content = nick <> "\n" <> E.mention nick <> "\n" <> E.atMention nick <> "\n" <> E.mentionReduce nick
+      let content =  nick <> "\n" <> E.mention nick <> "\n" <> E.atMention nick
+                  <> "\n" <> E.mentionReduce nick
       void $ B.reply (E.msgID msg) content
     )
   ]

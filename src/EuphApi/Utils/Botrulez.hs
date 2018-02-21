@@ -11,6 +11,9 @@ module EuphApi.Utils.Botrulez
   , uptimeCommand
   , generalUptimeCommand
   , killCommand
+  , killCommandSilent
+  , restartCommand
+  , restartCommandSilent
   ) where
 
 import           Control.Monad
@@ -83,7 +86,18 @@ generalUptimeCommand = E.command "uptime" uptime
 -- When killed, bots should disconnect and not reconnect.
 --
 -- Bots __may implement__ this command.
-killCommand :: E.Command b c
-killCommand = E.specificCommand "kill" $ \msg -> do
-  void $ B.reply (E.msgID msg) "Bye!"
+killCommand :: T.Text -> E.Command b c
+killCommand t = E.specificCommand "kill" $ \msg -> do
+  void $ B.reply (E.msgID msg) t
   B.stop
+
+killCommandSilent :: E.Command b c
+killCommandSilent = E.specificCommand "kill" $ const B.stop
+
+restartCommand :: T.Text -> E.Command b c
+restartCommand t = E.specificCommand "restart" $ \msg -> do
+  void $ B.reply (E.msgID msg) t
+  B.restart
+
+restartCommandSilent :: E.Command b c
+restartCommandSilent = E.specificCommand "restart" $ const B.restart

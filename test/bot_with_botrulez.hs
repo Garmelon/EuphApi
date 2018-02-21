@@ -23,12 +23,8 @@ myCommands =
   , E.generalHelpCommand "I help test @Garmy's EuphApi"
   , E.uptimeCommand
   , E.generalUptimeCommand -- most bots don't do this
-  , E.command "whatsmynick" (\msg -> do
-      nick <- E.sessName <$> B.getOwnView
-      let content =  nick <> "\n" <> E.mention nick <> "\n" <> E.atMention nick
-                  <> "\n" <> E.mentionReduce nick
-      void $ B.reply (E.msgID msg) content
-    )
+  , E.killCommand "Bye!"
+  , E.restartCommand "brb"
   ]
 
 myBotHandler :: E.EventType -> B.Bot b c ()
@@ -48,9 +44,9 @@ myBotConfig = B.BotConfig
   }
 
 main = do
-  myHandler <- LH.verboseStreamHandler stdout L.DEBUG
+  myHandler <- LH.verboseStreamHandler stdout L.INFO
   let myFormatter        = LF.simpleLogFormatter "<$time> [$loggername/$prio] $msg"
       myFormattedHandler = LH.setFormatter myHandler myFormatter
   L.updateGlobalLogger L.rootLoggerName (L.setHandlers [myFormattedHandler])
-  L.updateGlobalLogger L.rootLoggerName (L.setLevel L.DEBUG)
-  B.runBot myBotConfig
+  L.updateGlobalLogger L.rootLoggerName (L.setLevel L.INFO)
+  B.runBot (return myBotConfig)

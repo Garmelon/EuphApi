@@ -54,8 +54,9 @@
 -- If you want your bot to comply with the <https://github.com/jedevc/botrulez botrulez>,
 -- see "EuphApi.Utils.Botulez".
 --
--- For a simple example bot that just connects to <https://euphoria.io/room/test/ &test>,
--- see <https://github.com/Garmelon/EuphApi/blob/master/test/bot_simple_custom_logging.hs bot_simple_custom_logging.hs>
+-- For a simple example bot that just connects to <https://euphoria.io/room/test/ &test>
+-- and follows all mandatory and most optional botrulez,
+-- see <https://github.com/Garmelon/EuphApi/blob/master/test/bot_with_botrulez.hs bot_with_botrulez.hs>
 -- in the tests folder of the repository.
 -- This example bot also configures the logger to use a custom output format.
 --
@@ -63,7 +64,7 @@
 --
 -- This library uses the hslogger package for logging.
 --
--- See <https://github.com/Garmelon/EuphApi/blob/master/test/bot_simple_custom_logging.hs bot_simple_custom_logging.hs>
+-- See <https://github.com/Garmelon/EuphApi/blob/master/test/bot_with_botrulez.hs bot_with_botrulez.hs>
 -- for an example of how to set the global format.
 
 module EuphApi.Bot (
@@ -83,6 +84,7 @@ module EuphApi.Bot (
   , getOwnView
   -- * Bot commands
   , stop
+  , restart
   , send
   , reply
   , nick
@@ -93,6 +95,9 @@ module EuphApi.Bot (
   -- * Exceptions
   , BotException(..)
   ) where
+
+-- TODO: Move 'PasswordNeeded' to 'ExitState'?
+-- TODO: Add 'WrongPassword' exception or 'ExitState'.
 
 import           Control.Concurrent
 import           Control.Exception
@@ -117,8 +122,8 @@ infoM      :: String -> IO ()
 infoM      = L.infoM moduleName
 noticeM    :: String -> IO ()
 noticeM    = L.noticeM moduleName
---warningM   :: String -> IO ()
---warningM   = L.warningM moduleName
+warningM   :: String -> IO ()
+warningM   = L.warningM moduleName
 --errorM     :: String -> IO ()
 --errorM     = L.errorM moduleName
 --criticalM  :: String -> IO ()
@@ -127,6 +132,10 @@ noticeM    = L.noticeM moduleName
 --alertM     = L.alertM moduleName
 --emergencyM :: String -> IO ()
 --emergencyM = L.emergencyM moduleName
+
+data ExitState = Stopping
+               | Restarting
+               | OutOfRetries
 
 data BotState b c = BotState
   { bAddress           :: TVar String
@@ -137,7 +146,7 @@ data BotState b c = BotState
   , bBotInfo           :: b -- bot specific, user-defined info type
   , bNewConnectionInfo :: IO c
   , bReconnectPolicy   :: Integer -> Maybe Int
-  , bStopping          :: TVar Bool
+  , bStopping          :: TVar (Maybe ExitState)
   , bStartTime         :: UTCTime
   -- connection specific
   , bConnection        :: E.Connection
@@ -239,14 +248,13 @@ defaultReconnectPolicy n = Just $ (2 ^ n) * 1000 * 1000 -- in microseconds
  - Running a bot
  -}
 
--- | Execute a bot in this thread.
-runBot :: BotConfig b c -> IO ()
-runBot BotConfig{..} = do
+runBotOnce :: BotConfig b c -> IO ExitState
+runBotOnce BotConfig{..} = do
   bAddress        <- atomically $ newTVar botAddress
   bRoom           <- atomically $ newTVar botRoom
   bPassword       <- atomically $ newTVar $ T.pack <$> botPassword
   bNick           <- atomically $ newTVar $ T.pack botNick
-  bStopping       <- atomically $ newTVar False
+  bStopping       <- atomically $ newTVar Nothing
   bOwnView        <- atomically $ newTVar Nothing
   noticeM $ "Connecting to &" ++ botRoom ++ " on " ++ show botAddress ++ "."
   bConnectionInfo <- botNewConnectionInfo
@@ -260,15 +268,29 @@ runBot BotConfig{..} = do
       state              = BotState{..}
   runReaderT (eventLoop 0) state
 
-reconnect :: Integer -> Bot b c ()
+-- | Execute a bot in this thread.
+--
+-- Every time a bot is (re-)started, the 'IO' action passed to this function
+-- will be executed to obtain a new 'BotConfig'.
+-- This config is then used to run the bot.
+runBot :: IO (BotConfig b c) -> IO ()
+runBot ioConfig = do
+  config <- ioConfig
+  result <- runBotOnce config
+  case result of
+    Stopping     -> void $ noticeM "Bot has stopped."
+    OutOfRetries -> void $ warningM "Bot ran out of retries."
+    Restarting   -> noticeM "Bot has restarted." >> runBot ioConfig
+
+reconnect :: Integer -> Bot b c ExitState
 reconnect retries = do
   state <- ask
   stopping <- liftIO $ atomically $ readTVar $ bStopping state
-  if stopping
-    then return ()
-    else
+  case stopping of
+    Just s  -> return s
+    Nothing ->
       case bReconnectPolicy state retries of
-        Nothing    -> return ()
+        Nothing    -> return OutOfRetries
         Just delay -> do
           liftIO $ infoM $ "Attempting reconnect in " ++ show (delay `div` 1000000)
                            ++ "s (" ++ show delay ++ "µs)."
@@ -288,7 +310,7 @@ reconnect retries = do
           local (const newState) (eventLoop retries)
           -- lift $ runReaderT (eventLoop retries) newState
 
-eventLoop :: Integer -> Bot b c ()
+eventLoop :: Integer -> Bot b c ExitState
 eventLoop retries = do
   con     <- getConnection
   handler <- asks bHandler
@@ -329,9 +351,9 @@ handlePasswordStuff (E.BounceEvent _ (Just options))
     myPassword    <- liftIO $ atomically $ readTVar myPasswordVar
     con           <- getConnection
     case myPassword of
-      Nothing -> fork $ liftIO $ E.disconnect con -- TODO: Do something here
+      Nothing -> liftIO $ throwIO PasswordNeeded
       Just p  -> fork $ liftIO $ E.auth con p
-  | otherwise = return () -- TODO: And also here
+  | otherwise = liftIO $ throwIO NoValidAuthenticationMethods
 handlePasswordStuff _ = return ()
 
 handleOwnViewStuff :: E.Event -> Bot b c ()
@@ -356,15 +378,24 @@ changeOwnNick var newNick = do
  - Commands
  -}
 
+stopWith :: ExitState -> Bot b c ()
+stopWith s = do
+  stopping <- asks bStopping
+  con      <- asks bConnection
+  liftIO $ do
+    atomically $ writeTVar stopping (Just s)
+    E.disconnect con
+
 -- | Stop the bot.
 stop :: Bot b c ()
-stop = do
-  stopping <- asks bStopping
-  con <- asks bConnection
-  liftIO $ do
-    atomically $ writeTVar stopping False
-    E.disconnect con
-    noticeM "Bot was stopped."
+stop = stopWith Stopping
+
+-- | Restart the bot.
+--
+-- This will run the IO action passed to 'runBot' again to obtain a new 'BotConfig'.
+-- Then, the new config is used to run the bot again.
+restart :: Bot b c ()
+restart = stopWith Restarting
 
 -- | Send a new message.
 send :: T.Text -> Bot b c E.Message
@@ -423,8 +454,18 @@ who = do
 data BotException = NoOwnViewYet
                     -- ^ The bot has not received a SessionView for its current connection
                     -- from the server yet.
+                  | PasswordNeeded
+                    -- ^ The bot got bounced and needs a password to authenticate,
+                    -- but none was provided in the config.
+                  | NoValidAuthenticationMethods
+                    -- ^ The bot got bounced, but the server didn't provide any
+                    -- valid methods of authentication (password).
+                    -- As long as the server is working properly, this exception should
+                    -- not occur.
 
 instance Show BotException where
-  show NoOwnViewYet = "Bot hasn't received a SessionView of itself yet."
+  show NoOwnViewYet                 = "Bot hasn't received a SessionView of itself yet."
+  show PasswordNeeded               = "Bot needs to authenticate, but has no password."
+  show NoValidAuthenticationMethods = "Server gave no valid authentication methods."
 
 instance Exception BotException

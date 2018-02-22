@@ -91,13 +91,22 @@ killCommand t = E.specificCommand "kill" $ \msg -> do
   void $ B.reply (E.msgID msg) t
   B.stop
 
+-- | Version of 'killCommand' where the bot does not reply to the message which kills it.
 killCommandSilent :: E.Command b c
 killCommandSilent = E.specificCommand "kill" $ const B.stop
 
+-- | Specific restart command: @!restart \@botname@
+--
+-- When restarted, the bot receiving the command should be !killed and a
+-- new instance of the same bot should be started.
+--
+-- Bots __may implement__ this command.
 restartCommand :: T.Text -> E.Command b c
 restartCommand t = E.specificCommand "restart" $ \msg -> do
   void $ B.reply (E.msgID msg) t
   B.restart
 
+-- | Version of 'restartCommand' where the bot does not reply to the message
+-- which restarts it.
 restartCommandSilent :: E.Command b c
 restartCommandSilent = E.specificCommand "restart" $ const B.restart

@@ -96,8 +96,7 @@ module EuphApi.Bot (
   , BotException(..)
   ) where
 
--- TODO: Move 'PasswordNeeded' to 'ExitState'?
--- TODO: Add 'WrongPassword' exception or 'ExitState'.
+-- TODO: Add 'AuthenticationFailed' exception.
 
 import           Control.Concurrent
 import           Control.Exception
@@ -122,8 +121,8 @@ infoM      :: String -> IO ()
 infoM      = L.infoM moduleName
 noticeM    :: String -> IO ()
 noticeM    = L.noticeM moduleName
-warningM   :: String -> IO ()
-warningM   = L.warningM moduleName
+--warningM   :: String -> IO ()
+--warningM   = L.warningM moduleName
 --errorM     :: String -> IO ()
 --errorM     = L.errorM moduleName
 --criticalM  :: String -> IO ()
@@ -135,7 +134,6 @@ warningM   = L.warningM moduleName
 
 data ExitState = Stopping
                | Restarting
-               | OutOfRetries
 
 data BotState b c = BotState
   { bAddress           :: TVar String
@@ -279,7 +277,6 @@ runBot ioConfig = do
   result <- runBotOnce config
   case result of
     Stopping     -> void $ noticeM "Bot has stopped."
-    OutOfRetries -> void $ warningM "Bot ran out of retries."
     Restarting   -> noticeM "Bot has restarted." >> runBot ioConfig
 
 reconnect :: Integer -> Bot b c ExitState
@@ -290,7 +287,7 @@ reconnect retries = do
     Just s  -> return s
     Nothing ->
       case bReconnectPolicy state retries of
-        Nothing    -> return OutOfRetries
+        Nothing    -> liftIO $ throwIO OutOfRetries
         Just delay -> do
           liftIO $ infoM $ "Attempting reconnect in " ++ show (delay `div` 1000000)
                            ++ "s (" ++ show delay ++ "µs)."
@@ -462,10 +459,14 @@ data BotException = NoOwnViewYet
                     -- valid methods of authentication (password).
                     -- As long as the server is working properly, this exception should
                     -- not occur.
+                  | OutOfRetries
+                    -- ^ The bot's 'reconnectPolicy' has returned a @Nothing@ value,
+                    -- meaning that the bot should not attempt to reconnect any further.
 
 instance Show BotException where
   show NoOwnViewYet                 = "Bot hasn't received a SessionView of itself yet."
   show PasswordNeeded               = "Bot needs to authenticate, but has no password."
   show NoValidAuthenticationMethods = "Server gave no valid authentication methods."
+  show OutOfRetries                 = "Bot has ran out of reconnect retries."
 
 instance Exception BotException

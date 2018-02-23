@@ -4,14 +4,8 @@
 -- | This module lets you create bots, although it only contains the bare minimum necessary.
 -- It defines the 'Bot' monad which takes care of a few things common to most bots.
 --
--- The module is meant to be imported qualified, under a different name than all the
--- other EuphApi modules.
--- For example:
---
--- > import qualified EuphApi.Bot        as B
--- > import qualified EuphApi.Connection as E
--- > import qualified EuphApi.Types      as E
--- > import qualified EuphApi.Utils      as E
+-- The module exports some types from "EuphApi.Connection" for convenience.
+-- Don't import both modules unless you know what you're doing.
 --
 -- = The 'Bot' monad
 --
@@ -94,9 +88,17 @@ module EuphApi.Bot (
   , who
   -- * Exceptions
   , BotException(..)
+  -- * Misc
+  , E.EventType(..)
+  , E.Event(..)
   ) where
 
 -- TODO: Add 'AuthenticationFailed' exception.
+-- TODO: Reorganize library:
+--   - export events from Bot module
+--   - add EuphApi module to export Bot module and some other convenience modules,
+--     and to introduce people to the different parts of the library
+--   - maybe separate utils into more modules and have Utils import some of them
 
 import           Control.Concurrent
 import           Control.Exception
@@ -276,8 +278,8 @@ runBot ioConfig = do
   config <- ioConfig
   result <- runBotOnce config
   case result of
-    Stopping     -> void $ noticeM "Bot has stopped."
-    Restarting   -> noticeM "Bot has restarted." >> runBot ioConfig
+    Stopping   -> void $ noticeM "Bot has stopped."
+    Restarting -> noticeM "Bot has restarted." >> runBot ioConfig
 
 reconnect :: Integer -> Bot b c ExitState
 reconnect retries = do

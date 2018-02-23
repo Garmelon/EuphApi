@@ -9,13 +9,13 @@ import qualified System.Log.Handler        as LH
 import qualified System.Log.Handler.Simple as LH
 import qualified System.Log.Logger         as L
 
-import qualified EuphApi.Bot               as B
-import qualified EuphApi.Connection        as E
-import qualified EuphApi.Types             as E
-import qualified EuphApi.Utils             as E
+import qualified EuphApi                   as E
 import qualified EuphApi.Utils.Botrulez    as E
 
-myCommands :: [E.Command b c]
+type Bot = E.Bot () ()
+type Command = E.Command () ()
+
+myCommands :: [Command]
 myCommands =
   [ E.pingCommand "Pong!"
   , E.generalPingCommand "Pong!"
@@ -27,20 +27,20 @@ myCommands =
   , E.restartCommand "brb"
   ]
 
-myBotHandler :: E.EventType -> B.Bot b c ()
+myBotHandler :: E.EventType -> Bot ()
 myBotHandler (E.EuphEvent (E.SendEvent msg)) = E.runCommands myCommands msg
 myBotHandler _                               = return ()
 
-myBotConfig :: B.BotConfig () ()
-myBotConfig = B.BotConfig
-  { B.botAddress           = "euphoria.io"
-  , B.botRoom              = "test"
-  , B.botPassword          = Nothing
-  , B.botNick              = "EuphApi test bot"
-  , B.botHandler           = myBotHandler
-  , B.botInfo              = ()
-  , B.botNewConnectionInfo = return ()
-  , B.botReconnectPolicy   = B.defaultReconnectPolicy
+myBotConfig :: E.BotConfig () ()
+myBotConfig = E.BotConfig
+  { E.botAddress           = "euphoria.io"
+  , E.botRoom              = "test"
+  , E.botPassword          = Nothing
+  , E.botNick              = "EuphApi test bot"
+  , E.botHandler           = myBotHandler
+  , E.botInfo              = ()
+  , E.botNewConnectionInfo = return ()
+  , E.botReconnectPolicy   = E.defaultReconnectPolicy
   }
 
 main = do
@@ -49,4 +49,4 @@ main = do
       myFormattedHandler = LH.setFormatter myHandler myFormatter
   L.updateGlobalLogger L.rootLoggerName (L.setHandlers [myFormattedHandler])
   L.updateGlobalLogger L.rootLoggerName (L.setLevel L.INFO)
-  B.runBot (return myBotConfig)
+  E.runBot (return myBotConfig)

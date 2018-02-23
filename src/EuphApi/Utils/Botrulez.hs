@@ -22,7 +22,7 @@ import           Control.Monad.IO.Class
 import qualified Data.Text              as T
 import           Data.Time
 
-import qualified EuphApi.Bot            as B
+import qualified EuphApi.Bot            as E
 import qualified EuphApi.Types          as E
 import qualified EuphApi.Utils          as E
 
@@ -33,14 +33,14 @@ import qualified EuphApi.Utils          as E
 -- Bots __should implement__ this command.
 pingCommand :: T.Text -> E.Command b c
 pingCommand pingText = E.specificCommand "ping" $ \msg ->
-  void $ B.reply (E.msgID msg) pingText
+  void $ E.reply (E.msgID msg) pingText
 
 -- | General version of 'pingCommand': @!ping@
 --
 -- Bots __should implement__ this command.
 generalPingCommand :: T.Text -> E.Command b c
 generalPingCommand pingText = E.command "ping" $ \msg ->
-  void $ B.reply (E.msgID msg) pingText
+  void $ E.reply (E.msgID msg) pingText
 
 -- | Specific help command: @!help \@botname@
 --
@@ -49,7 +49,7 @@ generalPingCommand pingText = E.command "ping" $ \msg ->
 -- Bots __should implement__ this command.
 helpCommand :: T.Text -> E.Command b c
 helpCommand helpText = E.specificCommand "help" $ \msg ->
-  void $ B.reply (E.msgID msg) helpText
+  void $ E.reply (E.msgID msg) helpText
 
 -- | General version of 'helpCommand': @!help@
 --
@@ -58,13 +58,13 @@ helpCommand helpText = E.specificCommand "help" $ \msg ->
 -- Bots __may implement__ this command.
 generalHelpCommand :: T.Text -> E.Command b c
 generalHelpCommand helpText = E.command "help" $ \msg ->
-  void $ B.reply (E.msgID msg) helpText
+  void $ E.reply (E.msgID msg) helpText
 
-uptime :: E.Message -> B.Bot b c ()
+uptime :: E.Message -> E.Bot b c ()
 uptime msg = do
-  startTime <- B.getStartTime
+  startTime <- E.getStartTime
   curTime <- liftIO getCurrentTime
-  void $ B.reply (E.msgID msg) (T.pack $ E.printUptime startTime curTime)
+  void $ E.reply (E.msgID msg) (T.pack $ E.printUptime startTime curTime)
 
 -- | Specific uptime command: @!uptime \@botname@
 --
@@ -88,12 +88,12 @@ generalUptimeCommand = E.command "uptime" uptime
 -- Bots __may implement__ this command.
 killCommand :: T.Text -> E.Command b c
 killCommand t = E.specificCommand "kill" $ \msg -> do
-  void $ B.reply (E.msgID msg) t
-  B.stop
+  void $ E.reply (E.msgID msg) t
+  E.stop
 
 -- | Version of 'killCommand' where the bot does not reply to the message which kills it.
 killCommandSilent :: E.Command b c
-killCommandSilent = E.specificCommand "kill" $ const B.stop
+killCommandSilent = E.specificCommand "kill" $ const E.stop
 
 -- | Specific restart command: @!restart \@botname@
 --
@@ -103,10 +103,10 @@ killCommandSilent = E.specificCommand "kill" $ const B.stop
 -- Bots __may implement__ this command.
 restartCommand :: T.Text -> E.Command b c
 restartCommand t = E.specificCommand "restart" $ \msg -> do
-  void $ B.reply (E.msgID msg) t
-  B.restart
+  void $ E.reply (E.msgID msg) t
+  E.restart
 
 -- | Version of 'restartCommand' where the bot does not reply to the message
 -- which restarts it.
 restartCommandSilent :: E.Command b c
-restartCommandSilent = E.specificCommand "restart" $ const B.restart
+restartCommandSilent = E.specificCommand "restart" $ const E.restart

@@ -10,7 +10,6 @@ import qualified System.Log.Handler.Simple as LH
 import qualified System.Log.Logger         as L
 
 import qualified EuphApi                   as E
-import qualified EuphApi.Utils.Botrulez    as E
 
 type Bot = E.Bot () ()
 type Command = E.Command () ()

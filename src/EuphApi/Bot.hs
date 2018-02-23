@@ -94,11 +94,6 @@ module EuphApi.Bot (
   ) where
 
 -- TODO: Add 'AuthenticationFailed' exception.
--- TODO: Reorganize library:
---   - export events from Bot module
---   - add EuphApi module to export Bot module and some other convenience modules,
---     and to introduce people to the different parts of the library
---   - maybe separate utils into more modules and have Utils import some of them
 
 import           Control.Concurrent
 import           Control.Exception

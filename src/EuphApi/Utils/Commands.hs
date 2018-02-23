@@ -1,5 +1,12 @@
 {-# LANGUAGE OverloadedStrings #-}
 
+-- | This module helps with letting bots respond to commands.
+-- It supports general and specific commands.
+--
+-- If you want your bot to react to things other than commands like @!command@,
+-- have a look at the 'commandFromParser' function and the parsers below.
+-- It may often be easier to write a simple parser than to use regular expressions.
+
 module EuphApi.Utils.Commands
   ( Command
   , CommandName

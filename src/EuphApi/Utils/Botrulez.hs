@@ -24,7 +24,8 @@ import           Data.Time
 
 import qualified EuphApi.Bot            as E
 import qualified EuphApi.Types          as E
-import qualified EuphApi.Utils          as E
+import qualified EuphApi.Utils.Commands as E
+import qualified EuphApi.Utils.Misc     as E
 
 -- | Specific ping command: @!ping \@botname@
 --

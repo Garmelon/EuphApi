@@ -23,12 +23,12 @@ myCommands :: [Command]
 myCommands =
   [ E.pingCommand "Pong!"
   , E.generalPingCommand "Pong!"
-  , E.helpCommand "Some specific placeholder help"
-  , E.generalHelpCommand "I help test @Garmy's EuphApi"
+  , E.helpCommand (\n -> "Some specific placeholder help for " <> E.atMention n <> ".")
+  , E.generalHelpCommand (const "I help test @Garmy's EuphApi.")
   , E.uptimeCommand
   , E.generalUptimeCommand -- most bots don't do this
   , E.killCommand "Bye!"
-  , E.restartCommand "brb"
+  , E.restartCommand "brb."
   ]
 
 myBotHandler :: E.EventType -> Bot ()

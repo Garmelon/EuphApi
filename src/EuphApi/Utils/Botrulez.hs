@@ -45,21 +45,27 @@ generalPingCommand pingText = E.command "ping" $ \msg ->
 
 -- | Specific help command: @!help \@botname@
 --
+-- The function passed as the first argument receives the bot's current nick as argument.
+--
 -- Bots should reply with a detailed help message.
 --
 -- Bots __should implement__ this command.
-helpCommand :: T.Text -> E.Command b c
-helpCommand helpText = E.specificCommand "help" $ \msg ->
-  void $ E.reply (E.msgID msg) helpText
+helpCommand :: (T.Text -> T.Text) -> E.Command b c
+helpCommand f = E.specificCommand "help" $ \msg -> do
+  s <- E.sessName <$> E.getOwnView
+  void $ E.reply (E.msgID msg) (f s)
 
 -- | General version of 'helpCommand': @!help@
+--
+-- The function passed as the first argument receives the bot's current nick as argument.
 --
 -- Bots should reply with a short description of their function.
 --
 -- Bots __may implement__ this command.
-generalHelpCommand :: T.Text -> E.Command b c
-generalHelpCommand helpText = E.command "help" $ \msg ->
-  void $ E.reply (E.msgID msg) helpText
+generalHelpCommand :: (T.Text -> T.Text) -> E.Command b c
+generalHelpCommand f = E.command "help" $ \msg -> do
+  s <- E.sessName <$> E.getOwnView
+  void $ E.reply (E.msgID msg) (f s)
 
 uptime :: E.Message -> E.Bot b c ()
 uptime msg = do

@@ -730,4 +730,6 @@ newtype WhoReply = WhoReply
   } deriving (Show)
 
 instance FromJSON WhoReply where
-  parseJSON v = WhoReply <$> parseJSON v
+  parseJSON = withObject "WhoReply" $ \o -> do
+    listing <- o .: "listing"
+    return (WhoReply listing)

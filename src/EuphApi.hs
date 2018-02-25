@@ -17,6 +17,7 @@
 -- ["EuphApi.Utils"] Reexports a few util modules useful for creating bots.
 -- ["EuphApi.Utils.Botrulez"] <https://github.com/jedevc/botrulez botrulez> commands.
 -- ["EuphApi.Utils.Commands"] General and specific bot commands.
+-- ["EuphApi.Utils.Listing"] Track which clients are connected to the room.
 -- ["EuphApi.Utils.Misc"] Functions for dealing with nicks and time formats.
 
 module EuphApi

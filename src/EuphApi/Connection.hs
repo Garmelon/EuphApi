@@ -496,7 +496,7 @@ data Event
     -- connected to the same server id/era combo.
     --
     -- > NetworkEvent server_id server_era
-  | NickEvent E.Nick E.Nick
+  | NickEvent E.SessionID E.Nick E.Nick
     -- ^ A @NickEvent@ announces a nick change by another session in the room.
     --
     -- > NickEvent from to
@@ -564,7 +564,7 @@ instance FromJSON Event where
       pNetworkEvent = withObject "NetworkEvent" $ \o ->
         NetworkEvent <$> o .: "server_id" <*> o .: "server_era"
       pNickEvent = withObject "NickEvent" $ \o ->
-        NickEvent <$> o .: "from" <*> o .: "to"
+        NickEvent <$> o .: "session_id" <*> o .: "from" <*> o .: "to"
       pEditMessageEvent v = EditMessageEvent <$> parseJSON v
       pPartEvent v = PartEvent <$> parseJSON v
       pPingEvent = withObject "PingEvent" $ \o ->

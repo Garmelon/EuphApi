@@ -11,6 +11,7 @@ module EuphApi.Utils.Commands
   ( Command
   , CommandName
   , runCommands
+  , autorunCommands
   -- * Creating commands
   , command
   , specificCommand
@@ -49,6 +50,11 @@ runCommands :: [Command b c] -> E.Message -> E.Bot b c ()
 -- runCommands cs m = mapM_ E.fork $ cs <*> pure m
 -- runCommands cs = mapM_ E.fork . sequence cs
 runCommands cs m = mapM_ (E.fork . ($m)) cs
+
+-- | Atomatically run commands as necessary, according to the 'E.Event' given.
+autorunCommands :: [Command b c] -> E.Event -> E.Bot b c ()
+autorunCommands cs (E.SendEvent msg) = runCommands cs msg
+autorunCommands _ _                  = return ()
 
 withNick :: (T.Text -> a) -> E.Bot b c a
 withNick f = (f . E.sessName) <$> E.getOwnView

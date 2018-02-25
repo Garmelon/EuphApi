@@ -41,7 +41,7 @@ type Nick = T.Text
 data UserID = UserID
   { userType      :: UserType
   , userSnowflake :: Snowflake
-  } deriving (Show, Eq)
+  } deriving (Show, Eq, Ord)
 
 instance FromJSON UserID where
   parseJSON = withText "UserID" $ \t ->
@@ -66,7 +66,7 @@ data UserType = Agent
               | Account
               | Bot
               | Other
-  deriving (Show, Eq)
+  deriving (Show, Eq, Ord)
 
 -- | Represents <http://api.euphoria.io/#message>.
 --

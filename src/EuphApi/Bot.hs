@@ -81,6 +81,7 @@ module EuphApi.Bot (
   , restart
   , send
   , reply
+  , replyTo
   , nick
   , getMessage
   , messageLog
@@ -397,11 +398,15 @@ send content = do
   con <- asks bConnection
   liftIO $ E.send con Nothing content
 
--- | Reply to a message.
+-- | Reply to a message with a certain ID.
 reply :: E.Snowflake -> T.Text -> Bot b c E.Message
 reply parentID content = do
   con <- asks bConnection
   liftIO $ E.send con (Just parentID) content
+
+-- | Reply to a message.
+replyTo :: E.Message -> T.Text -> Bot b c E.Message
+replyTo msg = reply (E.msgID msg)
 
 -- | Change the bot's nick.
 nick :: T.Text -> Bot b c (T.Text, T.Text)

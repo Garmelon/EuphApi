@@ -34,14 +34,14 @@ import qualified EuphApi.Utils.Misc     as E
 -- Bots __should implement__ this command.
 pingCommand :: T.Text -> E.Command b c
 pingCommand pingText = E.specificCommand "ping" $ \msg ->
-  void $ E.reply (E.msgID msg) pingText
+  void $ E.replyTo msg pingText
 
 -- | General version of 'pingCommand': @!ping@
 --
 -- Bots __should implement__ this command.
 generalPingCommand :: T.Text -> E.Command b c
 generalPingCommand pingText = E.command "ping" $ \msg ->
-  void $ E.reply (E.msgID msg) pingText
+  void $ E.replyTo msg pingText
 
 -- | Specific help command: @!help \@botname@
 --
@@ -53,7 +53,7 @@ generalPingCommand pingText = E.command "ping" $ \msg ->
 helpCommand :: (T.Text -> T.Text) -> E.Command b c
 helpCommand f = E.specificCommand "help" $ \msg -> do
   s <- E.sessName <$> E.getOwnView
-  void $ E.reply (E.msgID msg) (f s)
+  void $ E.replyTo msg (f s)
 
 -- | General version of 'helpCommand': @!help@
 --
@@ -65,13 +65,13 @@ helpCommand f = E.specificCommand "help" $ \msg -> do
 generalHelpCommand :: (T.Text -> T.Text) -> E.Command b c
 generalHelpCommand f = E.command "help" $ \msg -> do
   s <- E.sessName <$> E.getOwnView
-  void $ E.reply (E.msgID msg) (f s)
+  void $ E.replyTo msg (f s)
 
 uptime :: E.Message -> E.Bot b c ()
 uptime msg = do
   startTime <- E.getStartTime
   curTime <- liftIO getCurrentTime
-  void $ E.reply (E.msgID msg) (T.pack $ E.printUptime startTime curTime)
+  void $ E.replyTo msg (T.pack $ E.printUptime startTime curTime)
 
 -- | Specific uptime command: @!uptime \@botname@
 --

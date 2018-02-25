@@ -56,8 +56,10 @@ fromList = Listing . M.fromList . map (\s -> (E.sessSessionID s, s))
 -- The 'TVar' containing the listing should be a part of the connection specific
 -- bot data.
 update :: TVar Listing -> E.Event -> E.Bot b c ()
-update lVar (E.SnapshotEvent _ list _ _) =
-  liftIO $ atomically $ writeTVar lVar (fromList list)
+update lVar (E.SnapshotEvent _ list _ _) = do
+  myID <- E.sessSessionID <$> E.getOwnView
+  let l = remove myID $ fromList list
+  liftIO $ atomically $ writeTVar lVar l
 update lVar (E.JoinEvent s) =
   withAskWho lVar $ liftIO $ atomically $ do
     (Listing m) <- readTVar lVar
@@ -78,7 +80,11 @@ update _ _ = return ()
 withAskWho :: TVar Listing -> E.Bot b c Bool -> E.Bot b c ()
 withAskWho lVar f = do
   ask <- f
-  when ask $ E.fork $ E.who >>= (liftIO . atomically . writeTVar lVar . fromList)
+  when ask $ E.fork $ do
+    myID <- E.sessSessionID <$> E.getOwnView
+    list <- E.who
+    let l = remove myID $ fromList list
+    liftIO $ atomically $ writeTVar lVar l
 
 -- | Add a new 'E.SessionView' to the listing (call on a 'E.JoinEvent').
 add :: E.SessionView -> Listing -> Listing

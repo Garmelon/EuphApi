@@ -107,13 +107,16 @@ startEuphConnection host room = do
   let euphCon = Connection locked sendQueue eventQueue
   void
     $ forkIO
-    $ handle (handleException eventQueue)
+    $ handle (handleIOException eventQueue)
+    $ handle (handleHandshakeException eventQueue)
     $ WSS.runSecureClient host 443 ("/room/" ++ room ++ "/ws")
     $ recvClient euphCon
   return euphCon
   where
-    handleException :: EventQueue -> WS.HandshakeException -> IO ()
-    handleException qEvent _ = atomically $ writeTBQueue qEvent ConnectionFailed
+    handleHandshakeException :: EventQueue -> WS.HandshakeException -> IO ()
+    handleHandshakeException qEvent _ = atomically $ writeTBQueue qEvent ConnectionFailed
+    handleIOException :: EventQueue -> IOException -> IO ()
+    handleIOException qEvent _ = atomically $ writeTBQueue qEvent ConnectionFailed
 
 {-
  - Send thread
